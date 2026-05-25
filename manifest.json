@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "ARVION DASHBOARD",
+  "version": "1.0",
+  "devtools_page": "src/devtools/devtools.html",
+  "permissions": [
+    "storage",
+    "webRequest",
+    "webNavigation" ,
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
+    "activeTab"
+  ],
+  "background": {
+    "service_worker": "src/background/background.js"
+  },
+   "host_permissions": [
+      "<all_urls>"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "rules",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  }
+}
+

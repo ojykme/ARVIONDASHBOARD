@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARVION Dashboard</title>
+  <link rel="stylesheet" href="src/dashboard/style.css" />
+  <script src="src/dashboard/chart.js" defer></script>
+  <script src="src/dashboard/view.js" defer></script>
+</head>
+<body>
+  <div class="dashboard-shell">
+    <div id="loadingOverlay" class="loading-overlay" aria-hidden="true">
+      <div class="loading-panel">
+        <div class="spinner"></div>
+        <span class="loading-message">데이터 로드 중...</span>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
+
+    <header class="dashboard-header">
+      <div class="dashboard-title">
+        <span class="dashboard-badge">ARVION</span>
+        <div>
+          <h1>ARVION DASHBOARD</h1>
+          <p class="brand-sub">이미지 압축 실시간 모니터링 및 캐싱 시스템 현황</p>
+        </div>
+      </div>
+
+      <div class="dashboard-actions">
+        <span class="action-label">상태</span>
+        <div id="filterContainer" class="filter-container">
+          <button class="filter-btn active" data-filter="all">전체</button>
+          <button class="filter-btn" data-filter="hit">HIT</button>
+          <button class="filter-btn" data-filter="miss">MISS</button>
+        </div>
+        <button id="refreshButton" class="refresh-btn">새로고침</button>
+      </div>
+    </header>
+
+    <section id="statsContainer" class="stats-grid"></section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>실시간 이미지 트래픽</h2>
+          <p>압축 전후 비교, 캐시 상태, 처리 시간을 한눈에 확인하세요.</p>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table id="data-table">
+          <thead>
+            <tr>
+              <th class="sortable" data-sort="url">요청 URL</th>
+              <th class="sortable numeric" data-sort="originalSize">원래 사이즈</th>
+              <th class="sortable numeric" data-sort="compressedSize">압축된 크기</th>
+              <th class="sortable numeric" data-sort="compressionRatio">절감율</th>
+              <th class="sortable numeric" data-sort="processingTime">처리 시간</th>
+              <th class="sortable" data-sort="originalFormat">원본 포맷</th>
+              <th class="sortable" data-sort="convertedFormat">변환 포맷</th>
+              <th class="sortable" data-sort="cacheStatus">상태</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="chartContainer" class="panel chart-panel">
+      <div class="panel-header">
+        <div>
+          <h2>크기 비교</h2>
+          <p>원본 대비 압축된 이미지 크기를 빠르게 확인하세요.</p>
+        </div>
+      </div>
+      <div class="chart-wrapper">
+        <canvas id="imageChart"></canvas>
+      </div>
+    </section>
+  </div>
+
+  <div id="imageViewer" class="modal" aria-hidden="true">
+    <div class="modal-content">
+      <button type="button" class="close" aria-label="Close preview">×</button>
+      <div id="modalContent"></div>
+    </div>
+  </div>
+</body>
+</html>
+
