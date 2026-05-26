@@ -247,8 +247,8 @@ document.addEventListener("DOMContentLoaded", () => {
         <span class="stat-value">${rows ? `${savings.toFixed(1)}%` : "0.0%"}</span>
       </div>
       <div class="stat-card">
-        <span class="stat-label">누적 절감 대역폭</span>
-        <span class="stat-value" style="color: var(--success);">${formatBytes(savedBandwidth)}</span>
+        <span class="stat-label">누적 절감 전송량</span>
+        <span class="stat-value" style="color: var(--success);">${formatBytes(savedBandwidth)} / <span style="font-size: 0.9em; color: var(--text-muted);">${formatBytes(compressedTotal)}</span></span>
       </div>
     `;
   }
