@@ -178,8 +178,8 @@ document.addEventListener("DOMContentLoaded", () => {
         <strong>${rows.toLocaleString()}</strong>
       </div>
       <div class="stat-card">
-        <span class="stat-title">캐시 히트율</span>
-        <strong>${hitRate}</strong>
+        <span class="stat-title">오리진 이미지 총 사이즈</span>
+        <strong>${formatBytes(originalTotal)}</strong>
       </div>
       <div class="stat-card">
         <span class="stat-title">평균 절감율</span>
