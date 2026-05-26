@@ -247,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <span class="stat-value">${rows ? `${savings.toFixed(1)}%` : "0.0%"}</span>
       </div>
       <div class="stat-card">
-        <span class="stat-label">누적 절감 전송량</span>
+        <span class="stat-label">절감전송량/실제전송량</span>
         <span class="stat-value" style="color: var(--success);">${formatBytes(savedBandwidth)} / <span style="font-size: 0.9em; color: var(--text-muted);">${formatBytes(compressedTotal)}</span></span>
       </div>
     `;
@@ -282,18 +282,18 @@ document.addEventListener("DOMContentLoaded", () => {
       const status = item.cacheStatus || item.cache || item.status || item.state || "N/A";
       const normalizedStatus = String(status).trim();
       const statusKey = normalizedStatus.toLowerCase();
-      
+
       const statusClass = statusKey.includes("hit")
         ? "badge badge-success"
         : statusKey.includes("miss")
-        ? "badge badge-danger"
-        : statusKey.includes("cache") || statusKey.includes("stored") || statusKey.includes("ok")
-        ? "badge badge-info"
-        : statusKey.includes("pending") || statusKey.includes("processing") || statusKey.includes("waiting")
-        ? "badge badge-warning"
-        : statusKey.includes("error") || statusKey.includes("fail") || statusKey.includes("invalid")
-        ? "badge badge-alert"
-        : "badge badge-neutral";
+          ? "badge badge-danger"
+          : statusKey.includes("cache") || statusKey.includes("stored") || statusKey.includes("ok")
+            ? "badge badge-info"
+            : statusKey.includes("pending") || statusKey.includes("processing") || statusKey.includes("waiting")
+              ? "badge badge-warning"
+              : statusKey.includes("error") || statusKey.includes("fail") || statusKey.includes("invalid")
+                ? "badge badge-alert"
+                : "badge badge-neutral";
 
       row.innerHTML = `
         <td><a class="url-link" href="${item.url || "#"}" target="_blank" rel="noopener noreferrer">${getShortenedUrl(item.url)}</a></td>
@@ -347,8 +347,8 @@ document.addEventListener("DOMContentLoaded", () => {
       plugins: {
         legend: {
           position: "bottom",
-          labels: { 
-            usePointStyle: true, 
+          labels: {
+            usePointStyle: true,
             pointStyle: "circle",
             color: labelColor,
             font: { weight: "600" }
@@ -365,9 +365,9 @@ document.addEventListener("DOMContentLoaded", () => {
           grid: { display: false },
           ticks: { color: labelColor }
         },
-        y: { 
+        y: {
           beginAtZero: true,
-          ticks: { 
+          ticks: {
             callback: value => formatBytes(value),
             color: labelColor
           },
@@ -531,7 +531,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const ratio = state.scale / prevScale;
       state.translateX *= ratio;
       state.translateY *= ratio;
-      
+
       imageElement.style.transition = "transform 0.1s ease";
       updateTransform();
       if (onSync) {
