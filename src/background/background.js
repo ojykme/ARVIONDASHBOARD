@@ -2,24 +2,33 @@ let imageData = [];
 let devtoolsTabId=-1;
 let imageDataMap = new Map(); // devtoolsTabId를 키로, imageData 배열을 값으로 저장하는 Map
 
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
       case "devtoolsTabId":
-          imageDataMap.set(message.tabId, []); // 새 탭 ID에 대한 빈 배열 생성
-          devtoolsTabId = message.tabId; // devtoolsTabId 업데이트 (필요한 경우)
+          // 이미 데이터가 있으면 초기화하지 않음 (재오픈 시 데이터 보존)
+          if (!imageDataMap.has(message.tabId)) {
+              imageDataMap.set(message.tabId, []);
+          }
+          devtoolsTabId = message.tabId;
           break;
       case "devtoolsClosed":
-          imageDataMap.delete(message.tabId); // 탭 ID에 해당하는 데이터 삭제
-          // devtoolsTabId = -1; // 필요 없음
+          // panel.onHidden은 다른 DevTools 탭으로 이동할 때도 발생하므로
+          // 데이터를 삭제하지 않음 → 패널로 돌아왔을 때 데이터 복원
+          console.log("[ARVION] DevTools panel hidden (not deleted) for Tab:", message.tabId);
           break;
       case "devtoolsOpened":
-          console.log("DevTools opened for Tab ID:", message.tabId);
+          console.log("[ARVION] DevTools opened for Tab ID:", message.tabId);
           break;
+      case "getInitialData": {
+          // 패널이 재오픈될 때 기존 데이터 복원
+          const tabId = devtoolsTabId;
+          const existingData = imageDataMap.get(tabId) || [];
+          sendResponse({ data: existingData });
+          return true;
+      }
       default:
-          console.warn("Unknown message type:", message.type);
           break;
   }
-
 });
 /*chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status === "loading" && tab.active) {
