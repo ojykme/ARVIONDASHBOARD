@@ -1,6 +1,6 @@
 chrome.devtools.panels.create(
     "ARVION DASHBOARD",
-    "icon.png",
+    "../../icon.png",
     "view.html",
     (panel) => {
         // 패널이 생성될 때 tabId를 background.js로 전송합니다. (한 번만 호출)

@@ -1,8 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "ARVION DASHBOARD",
+  "name": "ARVION BMT Dashboard",
   "version": "1.0",
+  "description": "Zero-Config B2B demo & real-time CDN traffic monitoring tool for ARVION.",
   "devtools_page": "src/devtools/devtools.html",
+  "icons": {
+    "16": "icon.png",
+    "32": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
   "permissions": [
     "storage",
     "webRequest",
@@ -30,9 +37,9 @@
     "default_popup": "src/popup/popup.html",
     "default_icon": {
       "16": "icon.png",
+      "32": "icon.png",
       "48": "icon.png",
       "128": "icon.png"
     }
   }
 }
-
