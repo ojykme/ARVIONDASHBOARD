@@ -111,22 +111,14 @@ chrome.webRequest.onCompleted.addListener((details) => {
 
 }, { urls: ["<all_urls>"] }, ["responseHeaders"]);
 
-// 탭별 마지막 URL 추적 (실제 페이지 이동 시에만 데이터 초기화)
-const tabLastUrlMap = new Map();
-
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // URL이 실제로 변경된 경우에만 리셋 (이미지/동영상 Range 로딩 이벤트로 인한 오발화 방지)
-  if (changeInfo.url) {
-      const lastUrl = tabLastUrlMap.get(tabId);
-      if (lastUrl && lastUrl !== changeInfo.url) {
-          // 실제 페이지 네비게이션 → 데이터 초기화
-          imageDataMap.set(tabId, []);
-          chrome.runtime.sendMessage({ type: "resetTable", tabId }, () => void chrome.runtime.lastError);
-      }
-      tabLastUrlMap.set(tabId, changeInfo.url);
-  }
+// webNavigation.onCommitted: F5 새로고침, URL 이동 모두 정확히 감지
+// frameId === 0 = 메인 프레임만 (iframe, 이미지 등 서브리소스 이벤트 제외)
+chrome.webNavigation.onCommitted.addListener((details) => {
+  if (details.frameId !== 0) return;
+  const tabId = details.tabId;
+  imageDataMap.set(tabId, []); // 해당 탭 데이터 초기화
+  chrome.runtime.sendMessage({ type: "resetTable", tabId }, () => void chrome.runtime.lastError);
 });
-
 
 
 const DEBUG_RULE_ID = 1;
