@@ -770,6 +770,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (typeof chrome !== "undefined" && chrome.runtime?.id && chrome.runtime.onMessage) {
       chrome.runtime.onMessage.addListener(message => {
         if (message.type === "newData") {
+          // 미리보기 모달이 열려있는 동안에는 테이블 리렌더 스킵 (깜빡임/데이터 소실 방지)
+          if (modal && modal.classList.contains("open")) return;
           updateDashboard(message.data, null, false, "새로운 트래픽이 추가되었습니다.");
         }
         if (message.type === "resetTable") {

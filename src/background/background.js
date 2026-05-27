@@ -50,6 +50,9 @@ chrome.webRequest.onCompleted.addListener((details) => {
       }
   }
 
+  // 익스텐션 자체 페이지(view.html 등)에서 발생한 fetch는 무시 (미리보기 fetch가 데이터를 오염시키는 것 방지)
+  if (details.initiator && details.initiator.startsWith('chrome-extension://')) return;
+
   // 탭 ID가 Map에 없더라도(확장 리로드 등) 에러 없이 초기화하여 데이터 수집을 보장
   if (!imageDataMap.has(targetTabId)) {
       imageDataMap.set(targetTabId, []);
