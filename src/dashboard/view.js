@@ -101,7 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function normalizeFormat(format) {
     if (!format || typeof format !== "string") return "N/A";
-    const cleaned = format.replace(/^image\//i, "").trim();
+    const cleaned = format.replace(/^(image|video)\//i, "").trim();
     return cleaned.toUpperCase() || "N/A";
   }
 
@@ -239,7 +239,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <span class="stat-value">${rows.toLocaleString()} 건 <span style="font-size: 0.95rem; color: var(--success); font-weight:700;">(${hitRate})</span></span>
       </div>
       <div class="stat-card">
-        <span class="stat-label">오리진 이미지 총 용량</span>
+        <span class="stat-label">오리진 미디어 총 용량</span>
         <span class="stat-value">${formatBytes(originalTotal)}</span>
       </div>
       <div class="stat-card">
@@ -262,7 +262,7 @@ document.addEventListener("DOMContentLoaded", () => {
       tableBody.innerHTML = `
         <tr>
           <td colspan="8" style="text-align: center; padding: 48px; color: var(--text-muted); font-weight: 500;">
-            실시간 캡처된 이미지 트래픽 리소스가 없습니다.
+            실시간 캡처된 미디어 트래픽 리소스가 없습니다.
           </td>
         </tr>
       `;
@@ -407,8 +407,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const savingsLabel = savingsPercent !== null ? `${savingsPercent.toFixed(1)}%` : "0.0%";
     const savingsClass = savingsPercent >= 0 ? "savings positive" : "savings negative";
 
+    const isVideo = String(item.originalFormat).toLowerCase().includes("video") || 
+                    String(item.convertedFormat || item.outputFormat || item.imageFormat || item.targetFormat).toLowerCase().includes("video");
+    const mediaTag = isVideo 
+      ? '<video class="modal-image" src="" controls autoplay loop muted playsinline style="max-width: 100%;"></video>'
+      : '<img class="modal-image" src="" alt="Preview" />';
+
     return `
-      <h2 class="modal-title">이미지 최적화 상세 비교</h2>
+      <h2 class="modal-title">미디어 최적화 상세 비교</h2>
       <div class="image-meta">
         <div class="meta-item url-item">
           <span class="meta-label">요청 URL</span>
@@ -438,27 +444,27 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="comparison-wrapper">
         <div class="img-box">
           <div class="img-header">
-            <h3>원본 이미지</h3>
+            <h3>원본 ${isVideo ? '동영상' : '이미지'}</h3>
             <div class="preview-controls">
               <button class="preview-btn" type="button" data-action="fit">전체 보기</button>
               <button class="preview-btn" type="button" data-action="actual">원본 크기</button>
             </div>
           </div>
           <div class="image-preview">
-            <img class="modal-image" src="" alt="Original Image Preview" />
+            ${mediaTag}
             <div class="image-loader"><div class="spinner"></div></div>
           </div>
         </div>
         <div class="img-box">
           <div class="img-header">
-            <h3>최적화 이미지</h3>
+            <h3>최적화 ${isVideo ? '동영상' : '이미지'}</h3>
             <div class="preview-controls">
               <button class="preview-btn" type="button" data-action="fit">전체 보기</button>
               <button class="preview-btn" type="button" data-action="actual">원본 크기</button>
             </div>
           </div>
           <div class="image-preview">
-            <img class="modal-image" src="" alt="Compressed Image Preview" />
+            ${mediaTag}
             <div class="image-loader"><div class="spinner"></div></div>
           </div>
         </div>
@@ -522,7 +528,7 @@ document.addEventListener("DOMContentLoaded", () => {
     imageElement.style.cursor = "grab";
 
     previewWrapper.addEventListener("wheel", event => {
-      if (!imageElement.naturalWidth || !imageElement.naturalHeight) return;
+      if (!imageElement.naturalWidth && !imageElement.videoWidth) return;
       event.preventDefault();
       const delta = event.deltaY > 0 ? -0.15 : 0.15;
       const prevScale = state.scale;
@@ -595,30 +601,33 @@ document.addEventListener("DOMContentLoaded", () => {
         const response = await fetch(src, { mode: 'cors' });
         if (!response.ok) throw new Error("Fetch failed");
         const blob = await response.blob();
-
-        const dataUrl = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
+        const dataUrl = URL.createObjectURL(blob);
 
         await new Promise(resolve => {
-          imageElement.onload = () => {
+          const isVideo = imageElement.tagName.toLowerCase() === 'video';
+          const loadHandler = () => {
             if (previewWrapper) previewWrapper.classList.add('loaded');
-            if (previewApi) {
-              previewApi.fitPreview(false);
-            }
+            if (previewApi) previewApi.fitPreview(false);
             resolve();
           };
+
+          if (isVideo) {
+            imageElement.onloadeddata = loadHandler;
+          } else {
+            imageElement.onload = loadHandler;
+          }
+
           imageElement.onerror = () => {
             if (previewWrapper) previewWrapper.classList.add('loaded');
             resolve();
           };
           imageElement.src = dataUrl;
+          if (isVideo) imageElement.load();
         });
       } catch (error) {
-        imageElement.alt = "이미지를 직접 불러올 수 없습니다. 우측 URL 링크를 사용하세요.";
+        if (imageElement.tagName.toLowerCase() === 'img') {
+          imageElement.alt = "미디어를 직접 불러올 수 없습니다. 우측 URL 링크를 사용하세요.";
+        }
         imageElement.src = "";
         if (previewWrapper) previewWrapper.classList.add('loaded');
       }
@@ -672,8 +681,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function closePreview() {
     modal.classList.remove("open");
     modal.setAttribute("aria-hidden", "true");
-    modalContent.querySelectorAll("img").forEach(img => {
-      if (img.src && img.src.startsWith("blob:")) URL.revokeObjectURL(img.src);
+    modalContent.querySelectorAll(".modal-image").forEach(media => {
+      if (media.src && media.src.startsWith("blob:")) URL.revokeObjectURL(media.src);
     });
     modalContent.innerHTML = "";
   }
@@ -723,7 +732,18 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function updateDashboard(items, message = "데이터 로드 중...", showOverlay = true, toastMessage = null) {
-    currentData = Array.isArray(items) ? items : [];
+    currentData = (Array.isArray(items) ? items : []).map(item => {
+      let o = Number(item.originalSize) || 0;
+      let c = Number(item.compressedSize) || 0;
+      
+      if (o > 0 && !c) {
+        c = o;
+      } else if (c > 0 && !o) {
+        o = c;
+      }
+      
+      return { ...item, originalSize: o, compressedSize: c };
+    });
     if (showOverlay) showLoading(message);
 
     requestAnimationFrame(() => {

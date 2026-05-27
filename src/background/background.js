@@ -29,14 +29,29 @@ chrome.runtime.onMessage.addListener((message) => {
 });*/
 
 chrome.webRequest.onCompleted.addListener((details) => {
-  if (!imageDataMap.has(details.tabId) || details.tabId === -1) return;
+  let targetTabId = details.tabId;
+
+  // 동영상(미디어) Range 요청 등 브라우저 백그라운드 페치 시 tabId가 -1로 들어올 수 있음.
+  // 이 경우, 모니터링 중인 탭(Map에 등록된 첫 번째 탭)으로 강제 할당하여 대시보드에 표시되게 우회.
+  if (targetTabId === -1) {
+      if (imageDataMap.size > 0) {
+          targetTabId = Array.from(imageDataMap.keys())[0];
+      } else {
+          targetTabId = "global_media"; // 확장이 새로고침되어 Map이 비어있는 경우 방어코드
+      }
+  }
+
+  // 탭 ID가 Map에 없더라도(확장 리로드 등) 에러 없이 초기화하여 데이터 수집을 보장
+  if (!imageDataMap.has(targetTabId)) {
+      imageDataMap.set(targetTabId, []);
+  }
 
   const headers = details.responseHeaders || [];
   const headerObj = {};
   headers.forEach(header => headerObj[header.name.toLowerCase()] = header.value);
 
-  // x-arvionstream-version 헤더가 있어야만 분석 대상
-  if (!headerObj["x-arvionstream-version"]) return;
+  // x-arvionstream-version 또는 x-image-processed 헤더가 있어야만 분석 대상
+  if (!headerObj["x-arvionstream-version"] && !headerObj["x-image-processed"]) return;
 
   const contentType = (headerObj["content-type"] || "").toLowerCase();
   const isMediaResource = details.type === "image" || details.type === "media" || /^image\//.test(contentType) || /^video\//.test(contentType);
@@ -58,7 +73,7 @@ chrome.webRequest.onCompleted.addListener((details) => {
       }
   }
 
-  let imageData = imageDataMap.get(details.tabId) || [];
+  let imageData = imageDataMap.get(targetTabId) || [];
 
   imageData.push({
       url: details.url,
@@ -79,8 +94,8 @@ chrome.webRequest.onCompleted.addListener((details) => {
       imageData.shift();
   }
 
-  imageDataMap.set(details.tabId, imageData);
-  chrome.runtime.sendMessage({ type: "newData", data: imageData, tabId: details.tabId }, () => void chrome.runtime.lastError);
+  imageDataMap.set(targetTabId, imageData);
+  chrome.runtime.sendMessage({ type: "newData", data: imageData, tabId: targetTabId }, () => void chrome.runtime.lastError);
 
 }, { urls: ["<all_urls>"] }, ["responseHeaders"]);
 
