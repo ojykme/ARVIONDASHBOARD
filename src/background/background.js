@@ -192,8 +192,9 @@ function disableDebugMode() {
     });
 }
 
-// 디버깅 모드 상태 변경 감지
+// 디버그 및 데모 모드 상태 변경 감지
 chrome.storage.onChanged.addListener((changes) => {
+    // 디버그 모드 감지 (이전 호환성)
     if (changes.debugMode) {
         if (changes.debugMode.newValue) {
             enableDebugMode();
@@ -201,7 +202,62 @@ chrome.storage.onChanged.addListener((changes) => {
             disableDebugMode();
         }
     }
+
+    // B2B 데모 매핑 변경 감지
+    if (changes.demoModeEnabled || changes.domainMappings) {
+        chrome.storage.local.get(['demoModeEnabled', 'domainMappings'], (result) => {
+            const isEnabled = result.demoModeEnabled || false;
+            const mappings = result.domainMappings || [];
+            updateDemoRedirectRules(isEnabled, mappings);
+        });
+    }
 });
 
-// 확장 시작 시 Arvion 헤더 규칙을 항상 적용
+function updateDemoRedirectRules(isEnabled, mappings) {
+    // 이전 데모 규칙들을 먼저 전부 지움 (ID 10 ~ 100로 예약)
+    const oldRuleIds = Array.from({ length: 90 }, (_, i) => i + 10);
+    
+    if (!isEnabled || mappings.length === 0) {
+        chrome.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: oldRuleIds,
+            addRules: []
+        });
+        return;
+    }
+
+    const newRules = mappings.map((m, index) => {
+        return {
+            id: 10 + index, // 고유 ID 할당 (10부터 시작)
+            priority: 2,
+            action: {
+                type: "redirect",
+                redirect: {
+                    transform: { host: m.to }
+                }
+            },
+            condition: {
+                urlFilter: `*://${m.from}/*`,
+                resourceTypes: ["main_frame", "sub_frame", "stylesheet", "script", "image", "font", "object", "xmlhttprequest", "media", "websocket", "other"]
+            }
+        };
+    });
+
+    chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: oldRuleIds,
+        addRules: newRules
+    }, () => {
+        if (chrome.runtime.lastError) {
+            console.error("Error setting B2B demo rules:", chrome.runtime.lastError);
+        } else {
+            console.log(`B2B Demo rules updated. Active mappings: ${newRules.length}`);
+        }
+    });
+}
+
+// 확장 시작 시 Arvion 헤더 규칙 및 데모 규칙 초기화
 ensureArvionHeader();
+chrome.storage.local.get(['demoModeEnabled', 'domainMappings'], (result) => {
+    const isEnabled = result.demoModeEnabled || false;
+    const mappings = result.domainMappings || [];
+    updateDemoRedirectRules(isEnabled, mappings);
+});
