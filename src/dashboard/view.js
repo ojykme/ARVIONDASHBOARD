@@ -723,9 +723,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (refreshButton) {
     refreshButton.addEventListener("click", () => {
-      // 신선한 데이터를 강제로 새로 갱신 요청하기 위해 백그라운드에 메시지 송출 가능
-      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
-        chrome.runtime.sendMessage({ type: "refreshRequest" });
+      try {
+        if (typeof chrome !== "undefined" && chrome.runtime?.id) {
+          chrome.runtime.sendMessage({ type: "refreshRequest" }, () => void chrome.runtime.lastError);
+        }
+      } catch (e) {
+        // 익스텐션 컨텍스트 무효화 - 개발 중 익스텐션 리로드 시 정상 발생
       }
       updateDashboard(currentData, "데이터 갱신 중...", true, "화면 정보가 갱신되었습니다.");
     });
@@ -763,28 +766,34 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /* ================= 크롬 백그라운드 연동 ================= */
-  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
-    chrome.runtime.onMessage.addListener(message => {
-      if (message.type === "newData") {
-        updateDashboard(message.data, null, false, "새로운 트래픽이 추가되었습니다.");
-      }
-      if (message.type === "resetTable") {
-        currentData = [];
-        renderTable(currentData);
-        renderStats(currentData);
-        if (chartInstance) {
-          chartInstance.destroy();
-          chartInstance = null;
+  try {
+    if (typeof chrome !== "undefined" && chrome.runtime?.id && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener(message => {
+        if (message.type === "newData") {
+          updateDashboard(message.data, null, false, "새로운 트래픽이 추가되었습니다.");
         }
-      }
-    });
+        if (message.type === "resetTable") {
+          currentData = [];
+          renderTable(currentData);
+          renderStats(currentData);
+          if (chartInstance) {
+            chartInstance.destroy();
+            chartInstance = null;
+          }
+        }
+      });
 
-    // 최초 로드 시 백그라운드로 기존 데이터 요청
-    chrome.runtime.sendMessage({ type: "getInitialData" }, (response) => {
-      if (response && response.data) {
-        updateDashboard(response.data, null, false);
-      }
-    });
+      // 최초 로드 시 백그라운드로 기존 데이터 요청
+      chrome.runtime.sendMessage({ type: "getInitialData" }, (response) => {
+        if (chrome.runtime.lastError) return; // 컨텍스트 무효화 시 무시
+        if (response && response.data) {
+          updateDashboard(response.data, null, false);
+        }
+      });
+    }
+  } catch (e) {
+    // 익스텐션 컨텍스트 무효화 - 개발 중 리로드 시 정상 발생. DevTools를 재오픈하세요.
+    console.warn('[ARVION] Extension context invalidated. DevTools를 닫았다가 다시 열어주세요.');
   }
 
   attachSorting();
