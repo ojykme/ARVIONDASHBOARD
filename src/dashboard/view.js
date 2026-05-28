@@ -472,7 +472,7 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
   }
 
-  function initializeImagePreview(previewWrapper, imageElement) {
+  function initializeImagePreview(previewWrapper, imageElement, onSync) {
     const state = {
       scale: 1,
       translateX: 0,
