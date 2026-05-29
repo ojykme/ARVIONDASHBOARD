@@ -597,39 +597,48 @@ document.addEventListener("DOMContentLoaded", () => {
       const previewWrapper = imageElement.closest('.image-preview');
       if (previewWrapper) previewWrapper.classList.remove('loaded');
 
-      try {
-        const response = await fetch(src, { mode: 'cors' });
-        if (!response.ok) throw new Error("Fetch failed");
-        const blob = await response.blob();
-        const dataUrl = URL.createObjectURL(blob);
+      const isVideo = imageElement.tagName.toLowerCase() === 'video';
 
+      if (isVideo) {
+        // 비디오는 206 Partial Content 및 스트리밍 처리를 위해 fetch를 생략하고 바로 src를 할당
         await new Promise(resolve => {
-          const isVideo = imageElement.tagName.toLowerCase() === 'video';
-          const loadHandler = () => {
+          imageElement.onloadeddata = () => {
             if (previewWrapper) previewWrapper.classList.add('loaded');
             if (previewApi) previewApi.fitPreview(false);
             resolve();
           };
-
-          if (isVideo) {
-            imageElement.onloadeddata = loadHandler;
-          } else {
-            imageElement.onload = loadHandler;
-          }
-
           imageElement.onerror = () => {
             if (previewWrapper) previewWrapper.classList.add('loaded');
             resolve();
           };
-          imageElement.src = dataUrl;
-          if (isVideo) imageElement.load();
+          imageElement.src = src;
+          imageElement.load();
         });
-      } catch (error) {
-        if (imageElement.tagName.toLowerCase() === 'img') {
+      } else {
+        // 이미지는 기존처럼 fetch 후 Blob URL로 변환하여 로드 (캐시 우회 및 안전성 목적)
+        try {
+          const response = await fetch(src, { mode: 'cors' });
+          if (!response.ok) throw new Error("Fetch failed");
+          const blob = await response.blob();
+          const dataUrl = URL.createObjectURL(blob);
+
+          await new Promise(resolve => {
+            imageElement.onload = () => {
+              if (previewWrapper) previewWrapper.classList.add('loaded');
+              if (previewApi) previewApi.fitPreview(false);
+              resolve();
+            };
+            imageElement.onerror = () => {
+              if (previewWrapper) previewWrapper.classList.add('loaded');
+              resolve();
+            };
+            imageElement.src = dataUrl;
+          });
+        } catch (error) {
           imageElement.alt = "미디어를 직접 불러올 수 없습니다. 우측 URL 링크를 사용하세요.";
+          imageElement.src = "";
+          if (previewWrapper) previewWrapper.classList.add('loaded');
         }
-        imageElement.src = "";
-        if (previewWrapper) previewWrapper.classList.add('loaded');
       }
     }
 
