@@ -587,6 +587,7 @@ document.addEventListener("DOMContentLoaded", () => {
     modalContent.innerHTML = buildModalContent(item);
     modal.classList.add("open");
     modal.setAttribute("aria-hidden", "false");
+    modal.inert = false;
 
     const originalImg = modalContent.querySelectorAll(".modal-image")[0];
     const compressedImg = modalContent.querySelectorAll(".modal-image")[1];
@@ -698,6 +699,13 @@ document.addEventListener("DOMContentLoaded", () => {
   function closePreview() {
     modal.classList.remove("open");
     modal.setAttribute("aria-hidden", "true");
+    modal.inert = true;
+    
+    // 포커스를 잃게 만들어 에러 방지
+    if (document.activeElement && modal.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+    
     modalContent.querySelectorAll(".modal-image").forEach(media => {
       if (media.src && media.src.startsWith("blob:")) URL.revokeObjectURL(media.src);
     });
