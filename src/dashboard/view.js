@@ -604,60 +604,47 @@ document.addEventListener("DOMContentLoaded", () => {
       const isVideo = imageElement.tagName.toLowerCase() === 'video';
       console.log(`[loadImage] Loading ${isVideo ? 'VIDEO' : 'IMAGE'}: ${src}`);
 
-      if (isVideo) {
-        // 비디오는 206 Partial Content 및 스트리밍 처리를 위해 fetch를 생략하고 바로 src를 할당
+      // 브라우저 DevTools CSP (media-src, img-src) 우회를 위해 이미지/동영상 모두 fetch 후 Blob 변환
+      try {
+        const response = await fetch(src, { mode: 'cors' });
+        if (!response.ok) throw new Error("Fetch failed");
+        const blob = await response.blob();
+        const dataUrl = URL.createObjectURL(blob);
+
         await new Promise(resolve => {
           let resolved = false;
-          const handleLoad = (e) => {
-            console.log(`[loadImage] Video LOADED successfully via event: ${e.type}. URL: ${src}`);
-            console.log(`[loadImage] Video dimensions: ${imageElement.videoWidth}x${imageElement.videoHeight}`);
+          const handleLoad = () => {
             if (resolved) return;
             resolved = true;
             if (previewWrapper) previewWrapper.classList.add('loaded');
             if (previewApi) previewApi.fitPreview(false);
             resolve();
           };
-          imageElement.onloadedmetadata = handleLoad;
-          imageElement.onloadeddata = handleLoad;
-          imageElement.oncanplay = handleLoad;
+
+          if (isVideo) {
+            imageElement.onloadedmetadata = handleLoad;
+            imageElement.onloadeddata = handleLoad;
+            imageElement.oncanplay = handleLoad;
+          } else {
+            imageElement.onload = handleLoad;
+          }
+
           imageElement.onerror = (e) => {
-            console.error(`[loadImage] Video ERROR loading URL: ${src}`);
-            console.error("[loadImage] Video error details:", imageElement.error);
             if (resolved) return;
             resolved = true;
             if (previewWrapper) previewWrapper.classList.add('loaded');
             resolve();
           };
           
-          console.log(`[loadImage] Setting video.src = ${src}`);
-          imageElement.src = src;
-          imageElement.load();
+          imageElement.src = dataUrl;
+          if (isVideo) imageElement.load();
         });
-      } else {
-        // 이미지는 기존처럼 fetch 후 Blob URL로 변환하여 로드 (캐시 우회 및 안전성 목적)
-        try {
-          const response = await fetch(src, { mode: 'cors' });
-          if (!response.ok) throw new Error("Fetch failed");
-          const blob = await response.blob();
-          const dataUrl = URL.createObjectURL(blob);
-
-          await new Promise(resolve => {
-            imageElement.onload = () => {
-              if (previewWrapper) previewWrapper.classList.add('loaded');
-              if (previewApi) previewApi.fitPreview(false);
-              resolve();
-            };
-            imageElement.onerror = () => {
-              if (previewWrapper) previewWrapper.classList.add('loaded');
-              resolve();
-            };
-            imageElement.src = dataUrl;
-          });
-        } catch (error) {
+      } catch (error) {
+        if (!isVideo) {
           imageElement.alt = "미디어를 직접 불러올 수 없습니다. 우측 URL 링크를 사용하세요.";
-          imageElement.src = "";
-          if (previewWrapper) previewWrapper.classList.add('loaded');
         }
+        imageElement.src = "";
+        if (previewWrapper) previewWrapper.classList.add('loaded');
       }
     }
 
