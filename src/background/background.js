@@ -20,8 +20,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           console.log("[ARVION] DevTools opened for Tab ID:", message.tabId);
           break;
       case "getInitialData": {
-          // 패널이 재오픈될 때 기존 데이터 복원
-          const tabId = devtoolsTabId;
+          // 패널이 재오픈될 때 해당 탭의 기존 데이터 복원
+          const tabId = message.tabId;
           const existingData = imageDataMap.get(tabId) || [];
           sendResponse({ data: existingData });
           return true;

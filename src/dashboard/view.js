@@ -617,6 +617,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const originalWrapper = modalContent.querySelectorAll('.image-preview')[0];
     const compressedWrapper = modalContent.querySelectorAll('.image-preview')[1];
     
+    const isVideo = String(item.originalFormat).toLowerCase().includes("video") || 
+                    String(item.convertedFormat || item.outputFormat || item.imageFormat || item.targetFormat).toLowerCase().includes("video");
+
     // 비디오일 경우 처리 로직 (버튼 링크 연결 및 로더 제거)
     if (isVideo) {
       if (originalWrapper) {
@@ -811,6 +814,9 @@ document.addEventListener("DOMContentLoaded", () => {
   try {
     if (typeof chrome !== "undefined" && chrome.runtime?.id && chrome.runtime.onMessage) {
       chrome.runtime.onMessage.addListener(message => {
+        // 현재 인스펙트 중인 탭의 데이터만 수신 (다른 탭에서 발생한 이벤트는 무시)
+        if (message.tabId !== chrome.devtools.inspectedWindow.tabId) return;
+
         if (message.type === "newData") {
           // 미리보기 모달이 열려있는 동안에는 테이블 리렌더 스킵 (깜빡임/데이터 소실 방지)
           if (modal && modal.classList.contains("open")) return;
@@ -827,8 +833,8 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      // 최초 로드 시 백그라운드로 기존 데이터 요청
-      chrome.runtime.sendMessage({ type: "getInitialData" }, (response) => {
+      // 최초 로드 시 백그라운드로 기존 데이터 요청 (해당 탭의 데이터만 명시적 요청)
+      chrome.runtime.sendMessage({ type: "getInitialData", tabId: chrome.devtools.inspectedWindow.tabId }, (response) => {
         if (chrome.runtime.lastError) return; // 컨텍스트 무효화 시 무시
         if (response && response.data) {
           updateDashboard(response.data, null, false);
