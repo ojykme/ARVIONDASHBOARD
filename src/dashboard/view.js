@@ -584,6 +584,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function openPreview(item) {
+    console.log("[openPreview] Item clicked:", item);
     modalContent.innerHTML = buildModalContent(item);
     modal.classList.add("open");
     modal.setAttribute("aria-hidden", "false");
@@ -593,18 +594,23 @@ document.addEventListener("DOMContentLoaded", () => {
     const compressedImg = modalContent.querySelectorAll(".modal-image")[1];
     const originalUrl = item.originUrl || item.url;
     const compressedUrl = item.url;
+    
+    console.log(`[openPreview] URLs to load -> Original: ${originalUrl}, Compressed: ${compressedUrl}`);
 
     async function loadImage(imageElement, src, previewApi) {
       const previewWrapper = imageElement.closest('.image-preview');
       if (previewWrapper) previewWrapper.classList.remove('loaded');
 
       const isVideo = imageElement.tagName.toLowerCase() === 'video';
+      console.log(`[loadImage] Loading ${isVideo ? 'VIDEO' : 'IMAGE'}: ${src}`);
 
       if (isVideo) {
         // 비디오는 206 Partial Content 및 스트리밍 처리를 위해 fetch를 생략하고 바로 src를 할당
         await new Promise(resolve => {
           let resolved = false;
-          const handleLoad = () => {
+          const handleLoad = (e) => {
+            console.log(`[loadImage] Video LOADED successfully via event: ${e.type}. URL: ${src}`);
+            console.log(`[loadImage] Video dimensions: ${imageElement.videoWidth}x${imageElement.videoHeight}`);
             if (resolved) return;
             resolved = true;
             if (previewWrapper) previewWrapper.classList.add('loaded');
@@ -614,12 +620,16 @@ document.addEventListener("DOMContentLoaded", () => {
           imageElement.onloadedmetadata = handleLoad;
           imageElement.onloadeddata = handleLoad;
           imageElement.oncanplay = handleLoad;
-          imageElement.onerror = () => {
+          imageElement.onerror = (e) => {
+            console.error(`[loadImage] Video ERROR loading URL: ${src}`);
+            console.error("[loadImage] Video error details:", imageElement.error);
             if (resolved) return;
             resolved = true;
             if (previewWrapper) previewWrapper.classList.add('loaded');
             resolve();
           };
+          
+          console.log(`[loadImage] Setting video.src = ${src}`);
           imageElement.src = src;
           imageElement.load();
         });
