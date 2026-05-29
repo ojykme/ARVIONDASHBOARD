@@ -602,12 +602,20 @@ document.addEventListener("DOMContentLoaded", () => {
       if (isVideo) {
         // 비디오는 206 Partial Content 및 스트리밍 처리를 위해 fetch를 생략하고 바로 src를 할당
         await new Promise(resolve => {
-          imageElement.onloadeddata = () => {
+          let resolved = false;
+          const handleLoad = () => {
+            if (resolved) return;
+            resolved = true;
             if (previewWrapper) previewWrapper.classList.add('loaded');
             if (previewApi) previewApi.fitPreview(false);
             resolve();
           };
+          imageElement.onloadedmetadata = handleLoad;
+          imageElement.onloadeddata = handleLoad;
+          imageElement.oncanplay = handleLoad;
           imageElement.onerror = () => {
+            if (resolved) return;
+            resolved = true;
             if (previewWrapper) previewWrapper.classList.add('loaded');
             resolve();
           };
