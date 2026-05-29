@@ -409,9 +409,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const isVideo = String(item.originalFormat).toLowerCase().includes("video") || 
                     String(item.convertedFormat || item.outputFormat || item.imageFormat || item.targetFormat).toLowerCase().includes("video");
-    const mediaTag = isVideo 
-      ? '<video class="modal-image" src="" controls autoplay loop muted playsinline style="max-width: 100%;"></video>'
-      : '<img class="modal-image" src="" alt="Preview" />';
+    
+    let mediaTag = '';
+    if (isVideo) {
+      mediaTag = `
+        <div class="video-placeholder" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; width:100%; color:var(--text-muted); text-align:center; padding:20px;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px; opacity:0.7;">
+            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <line x1="2" y1="7" x2="7" y2="7"></line>
+            <line x1="2" y1="17" x2="7" y2="17"></line>
+            <line x1="17" y1="17" x2="22" y2="17"></line>
+            <line x1="17" y1="7" x2="22" y2="7"></line>
+          </svg>
+          <p style="font-size:0.9rem; margin-bottom:16px;">DevTools 보안 정책으로 인해<br>동영상은 새 탭에서만 재생할 수 있습니다.</p>
+          <button class="preview-btn video-open-btn" data-src="" style="padding:10px 20px; background:var(--primary); color:var(--text-inverse); border:none; border-radius:8px; font-weight:700; cursor:pointer;">새 탭에서 동영상 보기</button>
+        </div>
+      `;
+    } else {
+      mediaTag = '<img class="modal-image" src="" alt="Preview" />';
+    }
 
     return `
       <h2 class="modal-title">미디어 최적화 상세 비교</h2>
@@ -594,17 +613,31 @@ document.addEventListener("DOMContentLoaded", () => {
     const compressedImg = modalContent.querySelectorAll(".modal-image")[1];
     const originalUrl = item.originUrl || item.url;
     const compressedUrl = item.url;
+
+    const originalWrapper = modalContent.querySelectorAll('.image-preview')[0];
+    const compressedWrapper = modalContent.querySelectorAll('.image-preview')[1];
     
-    console.log(`[openPreview] URLs to load -> Original: ${originalUrl}, Compressed: ${compressedUrl}`);
+    // 비디오일 경우 처리 로직 (버튼 링크 연결 및 로더 제거)
+    if (isVideo) {
+      if (originalWrapper) {
+        originalWrapper.classList.add('loaded');
+        const btn = originalWrapper.querySelector('.video-open-btn');
+        if (btn) btn.onclick = () => window.open(originalUrl, '_blank');
+      }
+      if (compressedWrapper) {
+        compressedWrapper.classList.add('loaded');
+        const btn = compressedWrapper.querySelector('.video-open-btn');
+        if (btn) btn.onclick = () => window.open(compressedUrl, '_blank');
+      }
+      // 동영상은 확대/축소 등 이미지 전용 기능을 사용하지 않음
+      return;
+    }
 
     async function loadImage(imageElement, src, previewApi) {
       const previewWrapper = imageElement.closest('.image-preview');
       if (previewWrapper) previewWrapper.classList.remove('loaded');
 
-      const isVideo = imageElement.tagName.toLowerCase() === 'video';
-      console.log(`[loadImage] Loading ${isVideo ? 'VIDEO' : 'IMAGE'}: ${src}`);
-
-      // 브라우저 DevTools CSP (media-src, img-src) 우회를 위해 이미지/동영상 모두 fetch 후 Blob 변환
+      // 이미지는 fetch 후 Blob URL로 변환하여 로드
       try {
         const response = await fetch(src, { mode: 'cors' });
         if (!response.ok) throw new Error("Fetch failed");
@@ -621,14 +654,7 @@ document.addEventListener("DOMContentLoaded", () => {
             resolve();
           };
 
-          if (isVideo) {
-            imageElement.onloadedmetadata = handleLoad;
-            imageElement.onloadeddata = handleLoad;
-            imageElement.oncanplay = handleLoad;
-          } else {
-            imageElement.onload = handleLoad;
-          }
-
+          imageElement.onload = handleLoad;
           imageElement.onerror = (e) => {
             if (resolved) return;
             resolved = true;
@@ -637,19 +663,13 @@ document.addEventListener("DOMContentLoaded", () => {
           };
           
           imageElement.src = dataUrl;
-          if (isVideo) imageElement.load();
         });
       } catch (error) {
-        if (!isVideo) {
-          imageElement.alt = "미디어를 직접 불러올 수 없습니다. 우측 URL 링크를 사용하세요.";
-        }
+        imageElement.alt = "미디어를 직접 불러올 수 없습니다. 우측 URL 링크를 사용하세요.";
         imageElement.src = "";
         if (previewWrapper) previewWrapper.classList.add('loaded');
       }
     }
-
-    const originalWrapper = originalImg ? originalImg.closest('.image-preview') : null;
-    const compressedWrapper = compressedImg ? compressedImg.closest('.image-preview') : null;
 
     let isSyncing = false;
 
