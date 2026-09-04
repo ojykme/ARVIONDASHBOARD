@@ -883,3 +883,238 @@ td:first-child {
     font-size: 0.85rem;
   }
 }
+
+/* 11. Operations console theme: restrained surfaces, dense data hierarchy */
+:root[data-theme="light"] {
+  --bg-gradient: #f5f7fa;
+  --bg-main: #f5f7fa;
+  --surface: #ffffff;
+  --surface-hover: #f8fafc;
+  --surface-solid: #ffffff;
+  --surface-muted: #f8fafc;
+  --border: #d9e0e8;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --glass-blur: 0px;
+}
+
+:root, :root[data-theme="dark"] {
+  --bg-gradient: #0d1117;
+  --bg-main: #0d1117;
+  --surface: #151b23;
+  --surface-hover: #1b2430;
+  --surface-solid: #151b23;
+  --surface-muted: #10161e;
+  --border: #2b3542;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.22);
+  --glass-blur: 0px;
+}
+
+body {
+  background: var(--bg-main);
+}
+
+.dashboard-shell {
+  width: min(1440px, calc(100% - 40px));
+  padding-top: 20px;
+  gap: 16px;
+}
+
+.dashboard-header,
+.panel,
+.stat-card {
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.dashboard-header {
+  padding: 18px 22px;
+  border-top: 3px solid var(--primary);
+}
+
+.dashboard-title {
+  gap: 12px;
+}
+
+.dashboard-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+}
+
+.dashboard-header h1 {
+  background: none;
+  color: var(--text-main);
+  -webkit-text-fill-color: currentColor;
+  font-size: 1.35rem;
+}
+
+.brand-sub {
+  font-size: 0.78rem;
+}
+
+.filter-container {
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.filter-btn,
+.filter-btn.active,
+.refresh-btn,
+.theme-toggle-btn {
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.filter-btn {
+  padding: 6px 11px;
+  font-size: 0.78rem;
+}
+
+.refresh-btn,
+.theme-toggle-btn {
+  padding: 8px 12px;
+}
+
+.refresh-btn:hover,
+.theme-toggle-btn:hover,
+.stat-card:hover {
+  transform: none;
+}
+
+.stats-grid {
+  gap: 12px;
+}
+
+.stat-card {
+  padding: 16px 18px;
+  border-left: 3px solid var(--primary);
+}
+
+.stat-card::before,
+.stat-card:nth-child(2)::before,
+.stat-card:nth-child(3)::before,
+.stat-card:nth-child(4)::before {
+  display: none;
+}
+
+.stat-label {
+  margin-bottom: 4px;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+.stat-value {
+  font-size: 1.45rem;
+}
+
+.panel {
+  padding: 20px;
+}
+
+.panel-header {
+  margin-bottom: 16px;
+}
+
+.panel-header h2 {
+  font-size: 1.05rem;
+}
+
+.panel-header p {
+  font-size: 0.78rem;
+}
+
+.table-responsive {
+  border-radius: 6px;
+  background: var(--surface-solid);
+}
+
+.badge {
+  border-radius: 4px;
+  box-shadow: none;
+  letter-spacing: 0.02em;
+}
+
+/* Final density pass: the traffic table is the primary product surface. */
+.dashboard-header {
+  min-height: 68px;
+  padding: 14px 18px;
+  border-top-width: 2px;
+}
+
+.dashboard-header h1 {
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.dashboard-title {
+  gap: 10px;
+}
+
+.brand-sub {
+  margin-top: 1px;
+  font-size: 0.72rem;
+}
+
+.dashboard-actions {
+  gap: 8px;
+}
+
+.action-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.stats-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stat-card {
+  min-height: 84px;
+  padding: 13px 15px;
+}
+
+.stat-value {
+  font-size: 1.25rem;
+}
+
+.panel-header h2 {
+  font-size: 1rem;
+}
+
+th, td {
+  padding: 11px 14px;
+}
+
+th {
+  font-size: 0.66rem;
+  letter-spacing: 0.07em;
+}
+
+td {
+  font-size: 0.82rem;
+}
+
+.url-link {
+  font-weight: 600;
+}
+
+.badge {
+  min-height: 22px;
+  padding: 3px 7px;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
