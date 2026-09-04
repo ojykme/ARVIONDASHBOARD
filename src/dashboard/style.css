@@ -682,6 +682,11 @@ td:first-child {
   grid-column: 1 / -1;
 }
 
+.origin-url-item {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
 .url-value {
   color: var(--primary);
   font-weight: 700;
@@ -691,6 +696,14 @@ td:first-child {
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
+}
+
+.origin-url-value {
+  text-decoration: none;
+}
+
+.origin-url-value:hover {
+  text-decoration: underline;
 }
 
 .meta-label {
@@ -767,6 +780,50 @@ td:first-child {
 }
 
 .image-preview.loaded .image-loader {
+  display: none;
+}
+
+.preview-error {
+  position: absolute;
+  inset: 20px;
+  z-index: 5;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-main);
+  text-align: center;
+}
+
+.preview-error.visible {
+  display: flex;
+}
+
+.preview-error-title {
+  color: #fca5a5;
+  font-size: 0.95rem;
+}
+
+.preview-error-message {
+  max-width: 360px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.preview-error-link {
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.preview-error-link:hover {
+  text-decoration: underline;
+}
+
+.image-preview.has-error img {
   display: none;
 }
 

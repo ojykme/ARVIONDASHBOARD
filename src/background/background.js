@@ -2,6 +2,25 @@ let imageData = [];
 let devtoolsTabId=-1;
 let imageDataMap = new Map(); // devtoolsTabId를 키로, imageData 배열을 값으로 저장하는 Map
 
+function logNetworkEvent(event, details, extra = {}) {
+  let url = details?.url || "N/A";
+  try {
+    const parsed = new URL(url);
+    url = `${parsed.origin}${parsed.pathname}`;
+  } catch (error) {
+    // URL 파싱 실패 시에도 requestId와 이벤트는 남긴다.
+  }
+
+  console.debug(`[ARVION][${event}]`, {
+    requestId: details?.requestId || "N/A",
+    tabId: details?.tabId ?? "N/A",
+    type: details?.type || "N/A",
+    initiator: details?.initiator || "N/A",
+    url,
+    ...extra,
+  });
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
       case "devtoolsTabId":
@@ -39,6 +58,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.webRequest.onCompleted.addListener((details) => {
   let targetTabId = details.tabId;
+
+  if (details.initiator?.startsWith("chrome-extension://") || details.type === "image" || details.type === "media") {
+    const headers = details.responseHeaders || [];
+    const headerObj = {};
+    headers.forEach(header => headerObj[header.name.toLowerCase()] = header.value);
+    logNetworkEvent("completed", details, {
+      statusCode: details.statusCode ?? "N/A",
+      contentType: headerObj["content-type"] || "N/A",
+      contentLength: headerObj["content-length"] || "N/A",
+      originalDomain: headerObj["x-original-domain"] || "N/A",
+      arvionVersion: headerObj["x-arvionstream-version"] || "N/A",
+    });
+  }
 
   // 동영상(미디어) Range 요청 등 브라우저 백그라운드 페치 시 tabId가 -1로 들어올 수 있음.
   // 이 경우, 모니터링 중인 탭(Map에 등록된 첫 번째 탭)으로 강제 할당하여 대시보드에 표시되게 우회.
@@ -113,6 +145,29 @@ chrome.webRequest.onCompleted.addListener((details) => {
 
 // webNavigation.onCommitted: F5 새로고침, URL 이동 모두 정확히 감지
 // frameId === 0 = 메인 프레임만 (iframe, 이미지 등 서브리소스 이벤트 제외)
+chrome.webRequest.onBeforeRedirect.addListener((details) => {
+  let redirectUrl = details.redirectUrl || "N/A";
+  try {
+    const parsed = new URL(redirectUrl);
+    redirectUrl = `${parsed.origin}${parsed.pathname}`;
+  } catch (error) {
+    // Keep the source request log even if redirectUrl is malformed.
+  }
+
+  logNetworkEvent("redirect", details, {
+    redirectUrl,
+    statusCode: details.statusCode ?? "N/A",
+    responseHeaders: details.responseHeaders?.filter((header) =>
+      ["location", "content-type", "x-original-domain"].includes(header.name.toLowerCase())
+    ) || [],
+  });
+}, { urls: ["<all_urls>"] });
+
+chrome.webRequest.onErrorOccurred.addListener((details) => {
+  if (details.type !== "image" && details.type !== "media" && !details.initiator?.startsWith("chrome-extension://")) return;
+  logNetworkEvent("error", details, { error: details.error || "N/A" });
+}, { urls: ["<all_urls>"] });
+
 chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId !== 0) return;
   const tabId = details.tabId;
@@ -249,6 +304,10 @@ function updateDemoRedirectRules(isEnabled, mappings) {
             },
             condition: {
                 urlFilter: `*://${m.from}/*`,
+                // DevTools 미리보기는 chrome-extension:// initiator로 원본을
+                // 직접 요청해야 하므로 B2B redirect를 재적용하지 않는다.
+                // 일반 고객 페이지에서 발생한 요청에는 기존 redirect를 유지한다.
+                excludedInitiatorDomains: [chrome.runtime.id],
                 resourceTypes: ["main_frame", "sub_frame", "stylesheet", "script", "image", "font", "object", "xmlhttprequest", "media", "websocket", "other"]
             }
         };

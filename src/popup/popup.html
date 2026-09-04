@@ -10,7 +10,7 @@
     <div class="header">
         <h1>ARVION BMT 데모</h1>
         <div class="toggle-wrapper">
-            <span class="toggle-label">데모 모드(Redirect)</span>
+            <span class="toggle-label">데모 모드 (Redirect)</span>
             <label class="switch">
                 <input type="checkbox" id="demoToggle">
                 <span class="slider"></span>
@@ -21,20 +21,18 @@
     <div class="form-container">
         <div class="form-group">
             <label for="domainFrom">원본 도메인 (고객사)</label>
-            <input type="text" id="domainFrom" placeholder="예: img.just-one.co.kr">
+            <input type="text" id="domainFrom" placeholder="예: img.example.com" autocomplete="off">
         </div>
         <div class="form-group">
-            <label for="domainTo">ARVION 타겟 도메인</label>
-            <input type="text" id="domainTo" placeholder="예: justone.cdn.arvioncore.com">
+            <label for="domainTo">ARVION 대상 도메인</label>
+            <input type="text" id="domainTo" placeholder="예: customer.cdn.arvioncore.com" autocomplete="off">
         </div>
-        <button id="btnAdd" class="btn">도메인 매핑 추가</button>
+        <button id="btnAdd" class="btn" type="button">도메인 매핑 추가</button>
     </div>
 
     <div class="mapping-section">
-        <h2>활성화된 리다이렉트 규칙</h2>
-        <div id="mappingList" class="mapping-list">
-            <!-- 동적으로 리스트가 추가됨 -->
-        </div>
+        <h2>활성화된 리다이렉션 규칙</h2>
+        <div id="mappingList" class="mapping-list"></div>
     </div>
 
     <script src="popup.js"></script>

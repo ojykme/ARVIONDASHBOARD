@@ -144,6 +144,33 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function getSafeExternalUrl(value) {
+    try {
+      const url = new URL(String(value));
+      return /^https?:$/.test(url.protocol) ? url.href : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function getLogUrl(value) {
+    try {
+      const url = new URL(String(value));
+      return `${url.origin}${url.pathname}`;
+    } catch (error) {
+      return "N/A";
+    }
+  }
+
   function compareValues(a, b, key) {
     const numericKeys = ["originalSize", "compressedSize", "processingTime"];
     const left = a[key];
@@ -406,6 +433,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const savingsPercent = computeSavingsPercent(item.originalSize, item.compressedSize, item.compressionRatio);
     const savingsLabel = savingsPercent !== null ? `${savingsPercent.toFixed(1)}%` : "0.0%";
     const savingsClass = savingsPercent >= 0 ? "savings positive" : "savings negative";
+    const requestedUrl = item.url || "N/A";
+    const originUrl = item.originUrl || requestedUrl;
+    const safeOriginUrl = getSafeExternalUrl(originUrl);
 
     const isVideo = String(item.originalFormat).toLowerCase().includes("video") || 
                     String(item.convertedFormat || item.outputFormat || item.imageFormat || item.targetFormat).toLowerCase().includes("video");
@@ -437,7 +467,11 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="image-meta">
         <div class="meta-item url-item">
           <span class="meta-label">요청 URL</span>
-          <span class="meta-value url-value">${item.url || 'N/A'}</span>
+          <span class="meta-value url-value">${escapeHtml(requestedUrl)}</span>
+        </div>
+        <div class="meta-item url-item origin-url-item">
+          <span class="meta-label">오리진 URL</span>
+          <a class="meta-value url-value origin-url-value" href="${escapeHtml(safeOriginUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(originUrl)}</a>
         </div>
         <div class="meta-item">
           <span class="meta-label">원본 포맷</span>
@@ -471,6 +505,11 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
           <div class="image-preview">
             ${mediaTag}
+            <div class="preview-error" role="alert" aria-live="polite">
+              <strong class="preview-error-title">미리보기를 불러오지 못했습니다.</strong>
+              <span class="preview-error-message">오리진 URL을 직접 열어 확인해 주세요.</span>
+              <a class="preview-error-link" target="_blank" rel="noopener noreferrer">오리진 URL 열기</a>
+            </div>
             <div class="image-loader"><div class="spinner"></div></div>
           </div>
         </div>
@@ -484,6 +523,11 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
           <div class="image-preview">
             ${mediaTag}
+            <div class="preview-error" role="alert" aria-live="polite">
+              <strong class="preview-error-title">미리보기를 불러오지 못했습니다.</strong>
+              <span class="preview-error-message">오리진 URL을 직접 열어 확인해 주세요.</span>
+              <a class="preview-error-link" target="_blank" rel="noopener noreferrer">오리진 URL 열기</a>
+            </div>
             <div class="image-loader"><div class="spinner"></div></div>
           </div>
         </div>
@@ -603,7 +647,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function openPreview(item) {
-    console.log("[openPreview] Item clicked:", item);
+    const previewId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    console.debug("[ARVION][preview:start]", {
+      previewId,
+      requestedUrl: getLogUrl(item.url),
+      originUrl: getLogUrl(item.originUrl || item.url),
+      originalFormat: item.originalFormat || "N/A",
+      convertedFormat: item.convertedFormat || item.outputFormat || "N/A",
+    });
     modalContent.innerHTML = buildModalContent(item);
     modal.classList.add("open");
     modal.setAttribute("aria-hidden", "false");
@@ -611,8 +662,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const originalImg = modalContent.querySelectorAll(".modal-image")[0];
     const compressedImg = modalContent.querySelectorAll(".modal-image")[1];
-    const originalUrl = item.originUrl || item.url;
-    const compressedUrl = item.url;
+    const originalUrl = getSafeExternalUrl(item.originUrl || item.url);
+    const compressedUrl = getSafeExternalUrl(item.url);
+
+    function showPreviewError(wrapper, src, message = "오리진 URL을 직접 열어 확인해 주세요.") {
+      if (!wrapper) return;
+      const errorPanel = wrapper.querySelector(".preview-error");
+      const errorLink = wrapper.querySelector(".preview-error-link");
+      if (errorPanel) errorPanel.classList.add("visible");
+      if (wrapper) wrapper.classList.add("has-error", "loaded");
+      if (errorLink && src && src !== "N/A") {
+        errorLink.href = src;
+        errorLink.textContent = "오리진 URL 열기";
+      }
+      const messageElement = wrapper.querySelector(".preview-error-message");
+      if (messageElement) messageElement.textContent = message;
+    }
 
     const originalWrapper = modalContent.querySelectorAll('.image-preview')[0];
     const compressedWrapper = modalContent.querySelectorAll('.image-preview')[1];
@@ -638,13 +703,42 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function loadImage(imageElement, src, previewApi) {
       const previewWrapper = imageElement.closest('.image-preview');
-      if (previewWrapper) previewWrapper.classList.remove('loaded');
+      const side = previewWrapper === originalWrapper ? "original" : "optimized";
+      console.debug("[ARVION][preview:fetch:start]", {
+        previewId,
+        side,
+        url: getLogUrl(src),
+        mode: "cors",
+      });
+      if (previewWrapper) {
+        previewWrapper.classList.remove('loaded', 'has-error');
+        previewWrapper.querySelector('.preview-error')?.classList.remove('visible');
+        const errorLink = previewWrapper.querySelector('.preview-error-link');
+        if (errorLink) errorLink.href = '';
+      }
 
       // 이미지는 fetch 후 Blob URL로 변환하여 로드
       try {
         const response = await fetch(src, { mode: 'cors' });
+        console.debug("[ARVION][preview:fetch:response]", {
+          previewId,
+          side,
+          url: getLogUrl(src),
+          status: response.status,
+          statusText: response.statusText,
+          redirected: response.redirected,
+          finalUrl: getLogUrl(response.url),
+          contentType: response.headers.get("content-type") || "N/A",
+          contentLength: response.headers.get("content-length") || "N/A",
+        });
         if (!response.ok) throw new Error("Fetch failed");
         const blob = await response.blob();
+        console.debug("[ARVION][preview:blob]", {
+          previewId,
+          side,
+          type: blob.type || "N/A",
+          size: blob.size,
+        });
         const dataUrl = URL.createObjectURL(blob);
 
         await new Promise(resolve => {
@@ -654,6 +748,7 @@ document.addEventListener("DOMContentLoaded", () => {
             resolved = true;
             if (previewWrapper) previewWrapper.classList.add('loaded');
             if (previewApi) previewApi.fitPreview(false);
+            console.debug("[ARVION][preview:image:load]", { previewId, side });
             resolve();
           };
 
@@ -661,16 +756,29 @@ document.addEventListener("DOMContentLoaded", () => {
           imageElement.onerror = (e) => {
             if (resolved) return;
             resolved = true;
-            if (previewWrapper) previewWrapper.classList.add('loaded');
+            console.warn("[ARVION][preview:image:error]", {
+              previewId,
+              side,
+              url: getLogUrl(src),
+              error: e?.message || "image decode failed",
+            });
+            showPreviewError(previewWrapper, src, "응답이 이미지 형식이 아니거나 브라우저가 오리진 접근을 차단했습니다.");
             resolve();
           };
           
           imageElement.src = dataUrl;
         });
       } catch (error) {
-        imageElement.alt = "미디어를 직접 불러올 수 없습니다. 우측 URL 링크를 사용하세요.";
-        imageElement.src = "";
-        if (previewWrapper) previewWrapper.classList.add('loaded');
+        console.error("[ARVION][preview:fetch:error]", {
+          previewId,
+          side,
+          url: getLogUrl(src),
+          name: error?.name || "Error",
+          message: error?.message || String(error),
+        });
+        imageElement.alt = "미디어를 직접 불러올 수 없습니다.";
+        imageElement.removeAttribute("src");
+        showPreviewError(previewWrapper, src);
       }
     }
 
