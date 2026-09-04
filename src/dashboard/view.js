@@ -192,7 +192,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function getFilteredData(items) {
     return items.filter(item => {
-      const status = String(item.cacheStatus || item.cache || item.status || item.state || "").toLowerCase();
+      const status = String(item.cacheStatus ?? "").toLowerCase();
       if (currentFilter === "hit") return status.includes("hit");
       if (currentFilter === "miss") return status.includes("miss");
       return true;
@@ -255,7 +255,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const rows = items.length;
     const originalTotal = items.reduce((acc, item) => acc + (Number(item.originalSize) || 0), 0);
     const compressedTotal = items.reduce((acc, item) => acc + (Number(item.compressedSize) || 0), 0);
-    const hits = items.filter(item => String(item.cacheStatus || item.cache || item.status || item.state || "").toLowerCase().includes("hit")).length;
+    const hits = items.filter(item => String(item.cacheStatus ?? "").toLowerCase().includes("hit")).length;
     const hitRate = rows ? `${Math.round((hits / rows) * 100)}%` : "0%";
     const savings = originalTotal > 0 ? Math.max(0, (1 - compressedTotal / originalTotal) * 100) : 0;
     const savedBandwidth = originalTotal > 0 ? Math.max(0, originalTotal - compressedTotal) : 0;
@@ -306,9 +306,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const compressedSize = Number(item.compressedSize) || 0;
       const savings = originalSize > 0 ? Math.round((1 - compressedSize / originalSize) * 10000) / 100 : null;
       const convertedFormat = normalizeFormat(item.convertedFormat || item.outputFormat || item.imageFormat || item.targetFormat);
-      const status = item.cacheStatus || item.cache || item.status || item.state || "N/A";
-      const normalizedStatus = String(status).trim();
-      const statusKey = normalizedStatus.toLowerCase();
+      const statusText = item.cacheStatus ?? "N/A";
+      const statusKey = String(statusText).toLowerCase();
 
       const statusClass = statusKey.includes("hit")
         ? "badge badge-success"
@@ -330,7 +329,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="num numeric">${formatTime(item.processingTime)}</td>
         <td>${normalizeFormat(item.originalFormat)}</td>
         <td>${convertedFormat}</td>
-        <td><span class="${statusClass}">${normalizedStatus.toUpperCase()}</span></td>
+        <td><span class="${statusClass}">${escapeHtml(statusText)}</span></td>
       `;
     });
   }
@@ -717,29 +716,44 @@ document.addEventListener("DOMContentLoaded", () => {
         if (errorLink) errorLink.href = '';
       }
 
-      // 이미지는 fetch 후 Blob URL로 변환하여 로드
+      // DevTools 페이지의 fetch는 오리진의 CORS 정책에 막힐 수 있다.
+      // host permission을 가진 확장 서비스 워커에서 가져와 data URL로 전달받는다.
       try {
-        const response = await fetch(src, { mode: 'cors' });
+        const response = await new Promise((resolve, reject) => {
+          if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+            reject(new Error("Extension runtime is unavailable"));
+            return;
+          }
+
+          chrome.runtime.sendMessage({ type: "fetchPreview", url: src }, (result) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+              return;
+            }
+            resolve(result);
+          });
+        });
         console.debug("[ARVION][preview:fetch:response]", {
           previewId,
           side,
           url: getLogUrl(src),
-          status: response.status,
-          statusText: response.statusText,
-          redirected: response.redirected,
-          finalUrl: getLogUrl(response.url),
-          contentType: response.headers.get("content-type") || "N/A",
-          contentLength: response.headers.get("content-length") || "N/A",
+          status: response?.status ?? "N/A",
+          statusText: response?.statusText || "N/A",
+          redirected: response?.redirected ?? "N/A",
+          finalUrl: getLogUrl(response?.finalUrl),
+          contentType: response?.contentType || "N/A",
+          contentLength: response?.contentLength || "N/A",
         });
-        if (!response.ok) throw new Error("Fetch failed");
-        const blob = await response.blob();
+        if (!response?.ok) {
+          throw new Error(`Preview fetch failed (${response?.status || "unknown"}): ${response?.message || response?.statusText || "unknown"}`);
+        }
         console.debug("[ARVION][preview:blob]", {
           previewId,
           side,
-          type: blob.type || "N/A",
-          size: blob.size,
+          type: response.contentType || "N/A",
+          size: response.size || 0,
         });
-        const dataUrl = URL.createObjectURL(blob);
+        const dataUrl = response.dataUrl;
 
         await new Promise(resolve => {
           let resolved = false;

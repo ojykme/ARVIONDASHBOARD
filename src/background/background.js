@@ -21,8 +21,94 @@ function logNetworkEvent(event, details, extra = {}) {
   });
 }
 
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function fetchPreviewResource(url) {
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch (error) {
+    throw new Error("Invalid preview URL");
+  }
+
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    throw new Error("Preview URL must use http or https");
+  }
+
+  const ruleId = 1000 + (Date.now() % 100000000);
+  const allowRule = {
+    id: ruleId,
+    priority: 100,
+    action: { type: "allow" },
+    condition: {
+      requestDomains: [parsedUrl.hostname],
+      tabIds: [chrome.tabs.TAB_ID_NONE],
+      resourceTypes: ["xmlhttprequest"],
+    },
+  };
+
+  await updatePreviewRule({ addRules: [allowRule], removeRuleIds: [] });
+  console.debug("[ARVION][preview:rule]", {
+    action: "allow",
+    ruleId,
+    requestDomain: parsedUrl.hostname,
+    resourceType: "xmlhttprequest",
+    tabId: chrome.tabs.TAB_ID_NONE,
+  });
+
+  try {
+    const response = await fetch(parsedUrl.href, { redirect: "follow" });
+    const buffer = await response.arrayBuffer();
+    const contentType = response.headers.get("content-type") || "application/octet-stream";
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      redirected: response.redirected,
+      finalUrl: response.url,
+      contentType,
+      contentLength: response.headers.get("content-length") || "N/A",
+      size: buffer.byteLength,
+      dataUrl: `data:${contentType};base64,${arrayBufferToBase64(buffer)}`,
+    };
+  } finally {
+    await updatePreviewRule({ addRules: [], removeRuleIds: [ruleId] });
+    console.debug("[ARVION][preview:rule]", { action: "remove", ruleId });
+  }
+}
+
+function updatePreviewRule(options) {
+  return new Promise((resolve, reject) => {
+    chrome.declarativeNetRequest.updateSessionRules(options, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
+      case "fetchPreview":
+          fetchPreviewResource(message.url)
+              .then(sendResponse)
+              .catch(error => sendResponse({
+                  ok: false,
+                  error: error?.name || "Error",
+                  message: error?.message || String(error),
+              }));
+          return true;
       case "devtoolsTabId":
           // 이미 데이터가 있으면 초기화하지 않음 (재오픈 시 데이터 보존)
           if (!imageDataMap.has(message.tabId)) {
@@ -98,11 +184,18 @@ chrome.webRequest.onCompleted.addListener((details) => {
   if (!headerObj["x-arvionstream-version"] && !headerObj["x-image-processed"]) return;
 
   const contentType = (headerObj["content-type"] || "").toLowerCase();
+  const cacheStatus = headerObj["x-arvion-cache"] || headerObj["x-cache"] || headerObj["x-cache-status"] || "N/A";
+  const hasArvionMetadata = Boolean(
+    headerObj["x-arvion-cache"] ||
+    headerObj["x-arvion-job-id"] ||
+    headerObj["x-original-size"]
+  );
   const isMediaResource = details.type === "image" || details.type === "media" || /^image\//.test(contentType) || /^video\//.test(contentType);
-  if (!isMediaResource) return;
+  if (!isMediaResource && !hasArvionMetadata) return;
 
   // 원본 도메인/URL 재구성
-  let originUrl = "N/A";
+  // 원본 도메인 헤더가 없는 bypass 응답도 미리보기 가능하도록 요청 URL을 fallback으로 사용한다.
+  let originUrl = details.url;
   const originalDomain = headerObj["x-original-domain"];
   if (originalDomain) {
       try {
@@ -131,7 +224,11 @@ chrome.webRequest.onCompleted.addListener((details) => {
       originUrl,
       originalDomain: originalDomain || "N/A",
       streamVersion: headerObj["x-arvionstream-version"] || "N/A",
-      cacheStatus: headerObj["x-cache"] || headerObj["x-cache-status"] || "N/A",
+      // HIT-S3는 비동기 저장이 완료된 결과를 S3 캐시에서 제공한 상태다.
+      // 서버가 보낸 캐시 상태 문자열을 축약하거나 정규화하지 않고 그대로 전달한다.
+      cacheStatus,
+      jobId: headerObj["x-arvion-job-id"] || "N/A",
+      cacheControl: headerObj["cache-control"] || "N/A",
   });
 
   if (imageData.length > 1000) {
