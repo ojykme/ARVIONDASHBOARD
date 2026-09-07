@@ -31,6 +31,9 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
+// Reserve a distinct ID before either concurrent preview request awaits rule creation.
+let nextPreviewRuleId = 1000;
+
 async function fetchPreviewResource(url) {
   let parsedUrl;
   try {
@@ -43,7 +46,7 @@ async function fetchPreviewResource(url) {
     throw new Error("Preview URL must use http or https");
   }
 
-  const ruleId = 1000 + (Date.now() % 100000000);
+  const ruleId = nextPreviewRuleId++;
   const allowRule = {
     id: ruleId,
     priority: 100,
@@ -55,7 +58,7 @@ async function fetchPreviewResource(url) {
     },
   };
 
-  await updatePreviewRule({ addRules: [allowRule], removeRuleIds: [] });
+  await updatePreviewRule({ addRules: [allowRule], removeRuleIds: [ruleId] });
   console.debug("[ARVION][preview:rule]", {
     action: "allow",
     ruleId,

@@ -267,15 +267,18 @@ document.addEventListener("DOMContentLoaded", () => {
       </div>
       <div class="stat-card">
         <span class="stat-label">오리진 미디어 총 용량</span>
-        <span class="stat-value">${formatBytes(originalTotal)}</span>
+        <div class="stat-values-row">
+          <span class="stat-value">${formatBytes(originalTotal)}</span>
+          <span class="stat-saved">절감량 ${formatBytes(savedBandwidth)}</span>
+        </div>
       </div>
       <div class="stat-card">
         <span class="stat-label">평균 용량 절감율</span>
         <span class="stat-value">${rows ? `${savings.toFixed(1)}%` : "0.0%"}</span>
       </div>
       <div class="stat-card">
-        <span class="stat-label">절감전송량/실제전송량</span>
-        <span class="stat-value" style="color: var(--success);">${formatBytes(savedBandwidth)} / <span style="font-size: 0.9em; color: var(--text-muted);">${formatBytes(compressedTotal)}</span></span>
+        <span class="stat-label">실제 전송량</span>
+        <span class="stat-value">${formatBytes(compressedTotal)}</span>
       </div>
     `;
   }
@@ -783,13 +786,13 @@ document.addEventListener("DOMContentLoaded", () => {
           imageElement.src = dataUrl;
         });
       } catch (error) {
-        console.error("[ARVION][preview:fetch:error]", {
+        console.error("[ARVION][preview:fetch:error] " + JSON.stringify({
           previewId,
           side,
           url: getLogUrl(src),
           name: error?.name || "Error",
           message: error?.message || String(error),
-        });
+        }));
         imageElement.alt = "미디어를 직접 불러올 수 없습니다.";
         imageElement.removeAttribute("src");
         showPreviewError(previewWrapper, src);
