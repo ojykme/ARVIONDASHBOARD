@@ -16,6 +16,40 @@ document.addEventListener("DOMContentLoaded", () => {
   let sortDir = "asc";
   let currentData = [];
   let chartInstance = null;
+  let previewCleanup = () => {};
+  const comparisonModes = new Set(["split", "original", "optimized", "slider"]);
+  let preferredComparisonMode = "split";
+  let comparisonPreferenceEdited = false;
+  const comparisonPreferenceReady = new Promise(resolve => {
+    const restore = value => {
+      if (!comparisonPreferenceEdited && comparisonModes.has(value)) preferredComparisonMode = value;
+      resolve();
+    };
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        chrome.storage.local.get(["comparisonMode"], result => {
+          restore(chrome.runtime.lastError ? null : result?.comparisonMode);
+        });
+      } else restore(localStorage.getItem("comparisonMode"));
+    } catch { restore(null); }
+  });
+  function saveComparisonMode(value) {
+    if (!comparisonModes.has(value)) return;
+    preferredComparisonMode = value;
+    comparisonPreferenceEdited = true;
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        chrome.storage.local.set({ comparisonMode: value }, () => {
+          if (chrome.runtime.lastError) showToast("비교 방식 저장에 실패했습니다. 현재 화면에서는 유지됩니다.");
+        });
+      } else localStorage.setItem("comparisonMode", value);
+    } catch { showToast("비교 방식 저장에 실패했습니다. 현재 화면에서는 유지됩니다."); }
+  }
+  let pendingData = null;
+  let lastReceived = 0;
+  let highlightIncoming = false;
+  let statsFrame = 0;
+  const displayedStats = {};
   let currentTheme = "dark"; // Default Theme
 
   // SVG Icons
@@ -260,32 +294,42 @@ document.addEventListener("DOMContentLoaded", () => {
     const savings = originalTotal > 0 ? Math.max(0, (1 - compressedTotal / originalTotal) * 100) : 0;
     const savedBandwidth = originalTotal > 0 ? Math.max(0, originalTotal - compressedTotal) : 0;
 
-    statsContainer.innerHTML = `
-      <div class="stat-card">
-        <span class="stat-label">요청 건수 (캐시율)</span>
-        <span class="stat-value">${rows.toLocaleString()} 건 <span style="font-size: 0.95rem; color: var(--success); font-weight:700;">(${hitRate})</span></span>
+    if (!statsContainer.children.length) statsContainer.innerHTML = `
+      <div class="stat-card"><span class="stat-label">요청 건수 (캐시율)</span><span class="stat-value"><span data-stat="rows"></span> <small data-hit></small></span></div>
+      <div class="stat-card"><span class="stat-label">오리진 미디어 총 용량</span>
+        <div class="stat-values-row"><span class="stat-value" data-stat="original"></span><span class="stat-saved">절감량 <span data-stat="saved"></span></span></div>
+        <div class="savings-meter" role="meter" aria-label="오리진 대비 절감 비율" aria-valuemin="0" aria-valuemax="100"><span></span></div>
       </div>
-      <div class="stat-card">
-        <span class="stat-label">오리진 미디어 총 용량</span>
-        <div class="stat-values-row">
-          <span class="stat-value">${formatBytes(originalTotal)}</span>
-          <span class="stat-saved">절감량 ${formatBytes(savedBandwidth)}</span>
-        </div>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">평균 용량 절감율</span>
-        <span class="stat-value">${rows ? `${savings.toFixed(1)}%` : "0.0%"}</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">실제 전송량</span>
-        <span class="stat-value">${formatBytes(compressedTotal)}</span>
-      </div>
-    `;
+      <div class="stat-card"><span class="stat-label">평균 용량 절감율</span><span class="stat-value" data-stat="percent"></span></div>
+      <div class="stat-card"><span class="stat-label">실제 전송량</span><span class="stat-value" data-stat="actual"></span></div>`;
+    statsContainer.querySelector('[data-hit]').textContent = `(${hitRate})`;
+    const meter = statsContainer.querySelector('.savings-meter');
+    meter.setAttribute('aria-valuenow', savings.toFixed(1));
+    meter.title = `실제 전송량 ${formatBytes(compressedTotal)} · 절감량 ${formatBytes(savedBandwidth)}`;
+    meter.firstElementChild.style.width = `${savings}%`;
+    cancelAnimationFrame(statsFrame);
+    const targets = { rows, original: originalTotal, saved: savedBandwidth, percent: savings, actual: compressedTotal };
+    const starts = { ...displayedStats };
+    const start = performance.now();
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const nodes = [...statsContainer.querySelectorAll('[data-stat]')];
+    function tick(now) {
+      const progress = reduced ? 1 : Math.min(1, (now - start) / 300);
+      for (const node of nodes) {
+        const key = node.dataset.stat;
+        const from = starts[key] ?? targets[key];
+        const value = from + (targets[key] - from) * (1 - (1 - progress) ** 3);
+        displayedStats[key] = value;
+        node.textContent = key === 'percent' ? `${value.toFixed(1)}%` : key === 'rows' ? `${Math.round(value).toLocaleString()} 건` : formatBytes(value);
+      }
+      if (progress < 1) statsFrame = requestAnimationFrame(tick);
+    }
+    statsFrame = requestAnimationFrame(tick);
   }
 
   /* ================= 실시간 테이블 렌더링 ================= */
   function renderTable(items) {
-    tableBody.innerHTML = "";
+    const existing = new Map([...tableBody.querySelectorAll("tr[data-url]")].map(row => [row.dataset.url, row]));
     const rows = sortData(getFilteredData(items));
 
     if (rows.length === 0) {
@@ -299,8 +343,13 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    if (!existing.size) tableBody.innerHTML = "";
+    const retained = new Set();
     rows.forEach((item, index) => {
-      const row = tableBody.insertRow();
+      const row = existing.get(item.url) || document.createElement("tr");
+      retained.add(row);
+      if (!existing.has(item.url) && highlightIncoming) row.classList.add("incoming-row");
+      if (tableBody.children[index] !== row) tableBody.insertBefore(row, tableBody.children[index] || null);
       row.dataset.index = index;
       row.dataset.url = item.url || "";
       row.style.cursor = "pointer";
@@ -324,7 +373,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ? "badge badge-alert"
                 : "badge badge-neutral";
 
-      row.innerHTML = `
+      const markup = `
         <td><a class="url-link" href="${item.url || "#"}" target="_blank" rel="noopener noreferrer">${getShortenedUrl(item.url)}</a></td>
         <td class="num numeric">${formatBytes(originalSize)}</td>
         <td class="num numeric">${formatBytes(compressedSize)}</td>
@@ -334,7 +383,10 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${convertedFormat}</td>
         <td><span class="${statusClass}">${escapeHtml(statusText)}</span></td>
       `;
+      if (row._markup !== markup) { row.innerHTML = markup; row._markup = markup; }
     });
+    for (const row of existing.values()) if (!retained.has(row)) row.remove();
+    highlightIncoming = false;
   }
 
   /* ================= 통계 차트(Chart.js) 렌더링 ================= */
@@ -465,7 +517,21 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     return `
-      <h2 class="modal-title">미디어 최적화 상세 비교</h2>
+      <h2 class="modal-title" id="previewTitle">미디어 최적화 상세 비교</h2>
+      <div class="viewer-toolbar">
+        <select aria-label="비교 방식" id="compareMode" ${isVideo ? 'disabled' : ''}>
+          <option value="split">좌우 비교</option><option value="original">원본 집중 보기</option>
+          <option value="optimized">최적화 집중 보기</option><option value="slider" disabled>슬라이더 (이미지 로드 후 사용)</option>
+        </select>
+        <button type="button" data-view="fit">화면 맞춤</button>
+        <button type="button" data-view="minus" aria-label="축소">−</button>
+        <button type="button" data-view="1">100%</button><button type="button" data-view="2">200%</button>
+        <button type="button" data-view="4">400%</button><button type="button" data-view="plus" aria-label="확대">+</button>
+        <label><input id="syncPreview" type="checkbox" checked> 동기화</label>
+        <button type="button" id="toggleInfo" aria-expanded="false">정보 보기</button>
+        <button type="button" id="fullscreenPreview">전체화면</button>
+      </div>
+      <label class="wipe-control" hidden>원본 / 최적화 경계 <input type="range" min="0" max="100" value="50" aria-label="이미지 비교 경계"></label>
       <div class="image-meta">
         <div class="meta-item url-item">
           <span class="meta-label">요청 URL</span>
@@ -537,115 +603,69 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
   }
 
-  function initializeImagePreview(previewWrapper, imageElement, onSync) {
-    const state = {
-      scale: 1,
-      translateX: 0,
-      translateY: 0,
-      dragging: false,
-      startX: 0,
-      startY: 0,
-      originX: 0,
-      originY: 0,
-      displayMode: "fit"
-    };
-
-    function updateTransform() {
-      imageElement.style.transform = `translate(${state.translateX}px, ${state.translateY}px) scale(${state.scale})`;
+  function initializeImagePreview(wrapper, image, onSync) {
+    const controller = new AbortController();
+    const state = { scale: 1, x: 0, y: 0, fit: true };
+    let drag = null;
+    const badge = document.createElement("output");
+    badge.className = "zoom-badge";
+    badge.setAttribute("aria-label", "현재 확대 배율");
+    wrapper.append(badge);
+    function paint(sync = true) {
+      image.style.width = `${image.naturalWidth}px`;
+      image.style.height = `${image.naturalHeight}px`;
+      image.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+      badge.textContent = `${Math.round(state.scale * 100)}%`;
+      if (sync && onSync) onSync(state.scale, state.x, state.y);
     }
-
-    function resetPreview(triggerSync = true) {
-      state.scale = 1;
-      state.translateX = 0;
-      state.translateY = 0;
-      imageElement.style.transition = "transform 0.25s ease";
-      updateTransform();
-      setTimeout(() => { imageElement.style.transition = "none"; }, 250);
-      if (triggerSync && onSync) {
-        onSync(state.scale, state.translateX, state.translateY);
-      }
+    function fitPreview(sync = true) {
+      if (!image.naturalWidth || !wrapper.clientWidth || !wrapper.clientHeight) return;
+      state.fit = true;
+      state.scale = Math.min(wrapper.clientWidth / image.naturalWidth, wrapper.clientHeight / image.naturalHeight, 1);
+      state.x = state.y = 0;
+      paint(sync);
     }
-
-    function fitPreview(triggerSync = true) {
-      imageElement.style.width = "100%";
-      imageElement.style.maxWidth = "100%";
-      imageElement.style.height = "auto";
-      state.displayMode = "fit";
-      resetPreview(triggerSync);
+    function zoom(scale, x = 0, y = 0) {
+      const next = Math.min(16, Math.max(0.01, scale));
+      const ratio = next / state.scale;
+      state.x = x - (x - state.x) * ratio;
+      state.y = y - (y - state.y) * ratio;
+      state.scale = next;
+      state.fit = false;
+      paint();
     }
-
-    function actualPreview(triggerSync = true) {
-      imageElement.style.width = "auto";
-      imageElement.style.maxWidth = "none";
-      imageElement.style.height = "auto";
-      state.displayMode = "actual";
-      resetPreview(triggerSync);
+    function setSyncState(scale, x, y) {
+      Object.assign(state, { scale, x, y, fit: false });
+      paint(false);
     }
-
-    function setSyncState(scale, tx, ty) {
-      state.scale = scale;
-      state.translateX = tx;
-      state.translateY = ty;
-      updateTransform();
-    }
-
-    imageElement.style.transformOrigin = "center center";
-    imageElement.style.cursor = "grab";
-
-    previewWrapper.addEventListener("wheel", event => {
-      if (!imageElement.naturalWidth && !imageElement.videoWidth) return;
+    wrapper.addEventListener("wheel", event => {
+      if (!image.naturalWidth) return;
       event.preventDefault();
-      const delta = event.deltaY > 0 ? -0.15 : 0.15;
-      const prevScale = state.scale;
-      state.scale = Math.min(4, Math.max(0.5, state.scale + delta));
-
-      const ratio = state.scale / prevScale;
-      state.translateX *= ratio;
-      state.translateY *= ratio;
-
-      imageElement.style.transition = "transform 0.1s ease";
-      updateTransform();
-      if (onSync) {
-        onSync(state.scale, state.translateX, state.translateY);
-      }
-    }, { passive: false });
-
-    imageElement.addEventListener("mousedown", event => {
+      const rect = wrapper.getBoundingClientRect();
+      zoom(state.scale * (event.deltaY > 0 ? 0.85 : 1 / 0.85), event.clientX - rect.left - rect.width / 2, event.clientY - rect.top - rect.height / 2);
+    }, { passive: false, signal: controller.signal });
+    wrapper.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || event.target.closest("a, button") || !image.naturalWidth) return;
       event.preventDefault();
-      state.dragging = true;
-      state.startX = event.clientX;
-      state.startY = event.clientY;
-      state.originX = state.translateX;
-      state.originY = state.translateY;
-      imageElement.style.cursor = "grabbing";
-    });
-
-    window.addEventListener("mousemove", event => {
-      if (!state.dragging) return;
-      state.translateX = state.originX + (event.clientX - state.startX);
-      state.translateY = state.originY + (event.clientY - state.startY);
-      updateTransform();
-      if (onSync) {
-        onSync(state.scale, state.translateX, state.translateY);
-      }
-    });
-
-    window.addEventListener("mouseup", () => {
-      if (state.dragging) {
-        state.dragging = false;
-        imageElement.style.cursor = "grab";
-      }
-    });
-
-    imageElement.addEventListener("dblclick", () => {
-      if (state.displayMode === "actual") {
-        fitPreview();
-      } else {
-        actualPreview();
-      }
-    });
-
-    return { fitPreview, actualPreview, resetPreview, setSyncState };
+      wrapper.setPointerCapture(event.pointerId);
+      drag = { x: event.clientX, y: event.clientY, tx: state.x, ty: state.y };
+    }, { signal: controller.signal });
+    wrapper.addEventListener("pointermove", event => {
+      if (!drag) return;
+      state.x = drag.tx + event.clientX - drag.x;
+      state.y = drag.ty + event.clientY - drag.y;
+      state.fit = false;
+      paint();
+    }, { signal: controller.signal });
+    for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) {
+      wrapper.addEventListener(name, () => { drag = null; }, { signal: controller.signal });
+    }
+    wrapper.addEventListener("dblclick", () => state.fit ? zoom(1) : fitPreview(), { signal: controller.signal });
+    const observer = new ResizeObserver(() => { if (state.fit) fitPreview(false); });
+    observer.observe(wrapper);
+    return { fitPreview, actualPreview: () => zoom(1), zoom,
+      step: factor => zoom(state.scale * factor), setSyncState,
+      destroy: () => { controller.abort(); observer.disconnect(); } };
   }
 
   async function openPreview(item) {
@@ -657,10 +677,27 @@ document.addEventListener("DOMContentLoaded", () => {
       originalFormat: item.originalFormat || "N/A",
       convertedFormat: item.convertedFormat || item.outputFormat || "N/A",
     });
+    previewCleanup();
+    modalContent.className = "info-collapsed";
     modalContent.innerHTML = buildModalContent(item);
+    modalContent.querySelector("#toggleInfo").onclick = event => {
+      const collapsed = modalContent.classList.toggle("info-collapsed");
+      event.currentTarget.textContent = collapsed ? "정보 보기" : "정보 접기";
+      event.currentTarget.setAttribute("aria-expanded", String(!collapsed));
+    };
+    modalContent.querySelector("#fullscreenPreview").onclick = async () => {
+      try {
+        if (document.fullscreenElement === modal) await document.exitFullscreen();
+        else await modal.requestFullscreen();
+      } catch {
+        modal.classList.toggle("expanded");
+        showToast("브라우저 전체화면을 사용할 수 없어 패널 크기를 전환했습니다.");
+      }
+    };
     modal.classList.add("open");
     modal.setAttribute("aria-hidden", "false");
     modal.inert = false;
+    closeButton.focus();
 
     const originalImg = modalContent.querySelectorAll(".modal-image")[0];
     const compressedImg = modalContent.querySelectorAll(".modal-image")[1];
@@ -689,6 +726,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 비디오일 경우 처리 로직 (버튼 링크 연결 및 로더 제거)
     if (isVideo) {
+      modalContent.querySelectorAll('[data-view], #syncPreview').forEach(control => { control.disabled = true; });
       if (originalWrapper) {
         originalWrapper.classList.add('loaded');
         const btn = originalWrapper.querySelector('.video-open-btn');
@@ -756,6 +794,7 @@ document.addEventListener("DOMContentLoaded", () => {
           type: response.contentType || "N/A",
           size: response.size || 0,
         });
+        if (!imageElement.isConnected) return;
         const dataUrl = response.dataUrl;
 
         await new Promise(resolve => {
@@ -802,46 +841,72 @@ document.addEventListener("DOMContentLoaded", () => {
     let isSyncing = false;
 
     const originalPreview = originalWrapper && originalImg ? initializeImagePreview(originalWrapper, originalImg, (scale, tx, ty) => {
-      if (isSyncing) return;
+      if (isSyncing || !modalContent.querySelector("#syncPreview")?.checked) return;
       isSyncing = true;
       if (compressedPreview) compressedPreview.setSyncState(scale, tx, ty);
       isSyncing = false;
     }) : null;
 
     const compressedPreview = compressedWrapper && compressedImg ? initializeImagePreview(compressedWrapper, compressedImg, (scale, tx, ty) => {
-      if (isSyncing) return;
+      if (isSyncing || !modalContent.querySelector("#syncPreview")?.checked) return;
       isSyncing = true;
       if (originalPreview) originalPreview.setSyncState(scale, tx, ty);
       isSyncing = false;
     }) : null;
 
-    if (originalWrapper) {
-      originalWrapper.querySelectorAll('.preview-btn').forEach(button => {
-        button.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const action = button.dataset.action;
-          if (action === 'fit' && originalPreview) originalPreview.fitPreview();
-          if (action === 'actual' && originalPreview) originalPreview.actualPreview();
-        });
-      });
+    const apis = [originalPreview, compressedPreview].filter(Boolean);
+    const comparison = modalContent.querySelector(".comparison-wrapper");
+    const mode = modalContent.querySelector("#compareMode");
+    const sync = modalContent.querySelector("#syncPreview");
+    const wipe = modalContent.querySelector(".wipe-control");
+    let active = true;
+    previewCleanup = () => { active = false; apis.forEach(api => api.destroy()); };
+    function fitBoth() { apis.forEach(api => api.fitPreview(false)); }
+    let modeSelected = false;
+    function applyComparisonMode() {
+      comparison.dataset.mode = mode.value;
+      wipe.hidden = mode.value !== "slider";
+      if (mode.value === "slider") sync.checked = true;
+      sync.disabled = mode.value === "slider";
+      requestAnimationFrame(fitBoth);
     }
-
-    if (compressedWrapper) {
-      compressedWrapper.querySelectorAll('.preview-btn').forEach(button => {
-        button.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const action = button.dataset.action;
-          if (action === 'fit' && compressedPreview) compressedPreview.fitPreview();
-          if (action === 'actual' && compressedPreview) compressedPreview.actualPreview();
-        });
-      });
-    }
-
-    if (originalImg) await loadImage(originalImg, originalUrl, originalPreview);
-    if (compressedImg) await loadImage(compressedImg, compressedUrl, compressedPreview);
+    mode.onchange = () => {
+      modeSelected = true;
+      saveComparisonMode(mode.value);
+      applyComparisonMode();
+    };
+    wipe.querySelector("input").oninput = event => comparison.style.setProperty("--wipe", `${event.target.value}%`);
+    sync.onchange = () => { if (sync.checked) fitBoth(); };
+    modalContent.querySelectorAll("[data-view]").forEach(button => {
+      button.onclick = () => {
+        const target = mode.value === "optimized" ? compressedPreview : originalPreview;
+        if (!target) return;
+        const action = button.dataset.view;
+        if (action === "fit") fitBoth();
+        else if (action === "minus") target.step(0.8);
+        else if (action === "plus") target.step(1.25);
+        else target.zoom(Number(action));
+      };
+    });
+    await Promise.all([
+      comparisonPreferenceReady,
+      originalImg && loadImage(originalImg, originalUrl, originalPreview),
+      compressedImg && loadImage(compressedImg, compressedUrl, compressedPreview),
+    ]);
+    if (!active) return;
+    const sliderOption = mode.querySelector('[value="slider"]');
+    const compatible = originalImg?.naturalWidth > 0 && originalImg.naturalWidth === compressedImg?.naturalWidth && originalImg.naturalHeight === compressedImg?.naturalHeight;
+    sliderOption.disabled = !compatible;
+    sliderOption.textContent = compatible ? "슬라이더 비교" : "슬라이더 (동일 해상도 필요)";
+    if (!modeSelected) mode.value = preferredComparisonMode === "slider" && !compatible ? "split" : preferredComparisonMode;
+    applyComparisonMode();
   }
 
   function closePreview() {
+    previewCleanup();
+    previewCleanup = () => {};
+    if (document.fullscreenElement === modal) document.exitFullscreen().catch(() => {});
+    modal.classList.remove("expanded");
     modal.classList.remove("open");
     modal.setAttribute("aria-hidden", "true");
     modal.inert = true;
@@ -855,6 +920,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (media.src && media.src.startsWith("blob:")) URL.revokeObjectURL(media.src);
     });
     modalContent.innerHTML = "";
+    if (pendingData !== null) {
+      const latest = pendingData;
+      pendingData = null;
+      updateDashboard(latest, null, false);
+    }
   }
 
   // 테이블 행 및 링크 클릭 시 프리뷰 모달 열기
@@ -880,7 +950,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (event.target === modal) closePreview();
   });
   document.addEventListener("keydown", event => {
-    if (event.key === "Escape") closePreview();
+    if (event.key === "Escape" && !document.fullscreenElement) closePreview();
+    if (event.key === "Tab" && modal.classList.contains("open")) {
+      const controls = [...modal.querySelectorAll('button:not(:disabled), select:not(:disabled), input:not(:disabled), a[href]')]
+        .filter(control => control.getClientRects().length);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
   });
 
   /* ================= 필터 및 새로고침 트리거 ================= */
@@ -944,10 +1022,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (message.type === "newData") {
           // 미리보기 모달이 열려있는 동안에는 테이블 리렌더 스킵 (깜빡임/데이터 소실 방지)
-          if (modal && modal.classList.contains("open")) return;
-          updateDashboard(message.data, null, false, "새로운 트래픽이 추가되었습니다.");
+          lastReceived = Date.now();
+          updateReception();
+          highlightIncoming = true;
+          if (modal && modal.classList.contains("open")) { pendingData = message.data; return; }
+          updateDashboard(message.data, null, false);
         }
         if (message.type === "resetTable") {
+          pendingData = null;
+          lastReceived = 0;
+          updateReception();
           currentData = [];
           renderTable(currentData);
           renderStats(currentData);
@@ -971,6 +1055,20 @@ document.addEventListener("DOMContentLoaded", () => {
     console.warn('[ARVION] Extension context invalidated. DevTools를 닫았다가 다시 열어주세요.');
   }
 
+  const reception = document.createElement("span");
+  reception.className = "reception-status";
+  document.querySelector(".dashboard-title").append(reception);
+  function updateReception() {
+    const seconds = Math.floor((Date.now() - lastReceived) / 1000);
+    reception.textContent = lastReceived ? `마지막 수신 ${seconds}초 전` : "수신 대기";
+    reception.classList.toggle("receiving", !!lastReceived && seconds < 2);
+  }
+  setInterval(updateReception, 1000);
+  updateReception();
+  document.addEventListener("fullscreenchange", () => {
+    const button = modalContent.querySelector("#fullscreenPreview");
+    if (button) button.textContent = document.fullscreenElement === modal ? "전체화면 종료" : "전체화면";
+  });
   attachSorting();
   updateDashboard([]);
 });

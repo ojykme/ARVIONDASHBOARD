@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ARVION BMT Dashboard",
-  "version": "1.0",
+  "version": "1.1.0",
   "description": "Zero-Config B2B demo & real-time CDN traffic monitoring tool for ARVION.",
   "devtools_page": "src/devtools/devtools.html",
   "icons": {

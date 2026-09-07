@@ -1120,6 +1120,56 @@ td {
   gap: 4px 12px;
 }
 
+/* Live traffic indicators and pixel-scale comparison workspace. */
+.savings-meter { height: 5px; margin-top: 10px; background: var(--primary); border-radius: 3px; overflow: hidden; }
+.savings-meter > span { display: block; height: 100%; margin-left: auto; background: var(--danger-text); transition: width 300ms ease; }
+.stat-value, .zoom-badge { font-variant-numeric: tabular-nums; }
+.stat-value small { color: var(--success); font-size: 0.8rem; }
+.reception-status { color: var(--text-muted); font-size: 0.7rem; white-space: nowrap; }
+.reception-status::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--text-muted); }
+.reception-status.receiving::before { background: var(--success); box-shadow: 0 0 0 3px var(--success-bg); }
+.incoming-row { animation: incoming-row 1.2s ease-out; }
+@keyframes incoming-row { from { background-color: rgba(59, 130, 246, 0.22); } to { background-color: transparent; } }
+.modal { padding: 12px; }
+.modal .modal-content { width: 98vw; height: 94vh; max-height: none; padding: 18px; border-radius: 8px; overflow: hidden; }
+#modalContent { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
+.modal .close { top: 10px; right: 10px; z-index: 30; }
+.modal-title { padding-right: 42px; font-size: 1rem; flex-shrink: 0; }
+.viewer-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex-shrink: 0; }
+.viewer-toolbar button, .viewer-toolbar select { background: var(--surface-muted); color: var(--text-main); border: 1px solid var(--border); border-radius: 4px; padding: 7px 9px; cursor: pointer; font: inherit; font-size: 0.75rem; }
+.viewer-toolbar button:hover { border-color: var(--primary); }
+.viewer-toolbar label { font-size: 0.75rem; display: flex; align-items: center; gap: 4px; }
+.viewer-toolbar :disabled { opacity: 0.5; cursor: default; }
+.info-collapsed .image-meta { display: none; }
+.modal .image-meta { padding: 10px; gap: 8px; max-height: 25vh; overflow: auto; flex-shrink: 0; border-radius: 4px; }
+.modal .comparison-wrapper { flex: 1; min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; position: relative; }
+.modal .img-box { min-width: 0; min-height: 0; padding: 8px; gap: 6px; border-radius: 4px; }
+.modal .img-header { min-height: 24px; }
+.modal .img-header .preview-controls { display: none; }
+.modal .image-preview { height: auto; flex: 1; min-height: 0; border-radius: 2px; touch-action: none; cursor: grab; }
+.modal .image-preview:active { cursor: grabbing; }
+.modal .image-preview img { max-width: none; max-height: none; flex-shrink: 0; transform-origin: center; user-select: none; }
+.zoom-badge { position: absolute; bottom: 10px; right: 10px; padding: 4px 7px; background: #151b26; color: #fff; border-radius: 3px; font-size: 0.75rem; pointer-events: none; }
+.comparison-wrapper[data-mode="original"], .comparison-wrapper[data-mode="optimized"] { grid-template-columns: minmax(0, 1fr); }
+.comparison-wrapper[data-mode="original"] .img-box:nth-child(2), .comparison-wrapper[data-mode="optimized"] .img-box:first-child { display: none; }
+.comparison-wrapper[data-mode="slider"] .img-box { grid-area: 1 / 1; }
+.modal .comparison-wrapper[data-mode="slider"] { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.comparison-wrapper[data-mode="slider"] .img-box:nth-child(2) { clip-path: inset(0 0 0 var(--wipe, 50%)); }
+.comparison-wrapper[data-mode="slider"]::after { content: ""; position: absolute; left: var(--wipe, 50%); top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; }
+.wipe-control { font-size: 0.75rem; color: var(--text-muted); }
+.wipe-control input { width: min(500px, 60%); vertical-align: middle; }
+.modal:fullscreen, .modal.expanded { padding: 0; }
+.modal:fullscreen .modal-content, .modal.expanded .modal-content { width: 100%; height: 100%; border-radius: 0; }
+@media (max-width: 600px) {
+  .reception-status { display: none; }
+  .modal .modal-content { padding: 10px; }
+  .modal .comparison-wrapper { gap: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .incoming-row { animation: none; }
+  .savings-meter > span, .modal, .modal .modal-content, .modal .image-preview img { transition: none; }
+}
+
 .stat-saved {
   color: var(--danger-text);
   font-size: 0.85rem;
