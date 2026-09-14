@@ -8,6 +8,15 @@ function isVideoMedia(item) {
   });
 }
 
+function isAnimatedImageMedia(item) {
+  const formats = [item.contentType, item.originalFormat, item.convertedFormat, item.outputFormat, item.imageFormat, item.targetFormat];
+  if (formats.some(value => /^(image\/(gif|apng|webp)|gif$|apng$)/i.test(String(value || '').trim()))) return true;
+  return [item.url, item.originUrl].some(value => {
+    try { return /\.(gif|apng|webp)$/i.test(new URL(value).pathname); }
+    catch { return false; }
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const tableBody = document.querySelector("#data-table tbody");
   const statsContainer = document.getElementById("statsContainer");
@@ -30,6 +39,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const comparisonModes = new Set(["split", "original", "optimized", "slider"]);
   let preferredComparisonMode = "split";
   let comparisonPreferenceEdited = false;
+  let preferredLoopPlayback = false;
+  let loopPreferenceEdited = false;
   const comparisonPreferenceReady = new Promise(resolve => {
     const restore = value => {
       if (!comparisonPreferenceEdited && comparisonModes.has(value)) preferredComparisonMode = value;
@@ -54,6 +65,21 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       } else localStorage.setItem("comparisonMode", value);
     } catch { showToast("비교 방식 저장에 실패했습니다. 현재 화면에서는 유지됩니다."); }
+  }
+  const loopPreferenceReady = new Promise(resolve => {
+    const restore = value => { if (!loopPreferenceEdited) preferredLoopPlayback = value === true || value === "true"; resolve(); };
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) chrome.storage.local.get(["loopPlayback"], result => restore(result?.loopPlayback));
+      else restore(localStorage.getItem("loopPlayback"));
+    } catch { restore(false); }
+  });
+  function saveLoopPlayback(value) {
+    preferredLoopPlayback = Boolean(value);
+    loopPreferenceEdited = true;
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) chrome.storage.local.set({ loopPlayback: preferredLoopPlayback });
+      else localStorage.setItem("loopPlayback", String(preferredLoopPlayback));
+    } catch { showToast("반복 재생 설정 저장에 실패했습니다. 현재 화면에서는 유지됩니다."); }
   }
   let pendingData = null;
   let lastReceived = 0;
@@ -502,6 +528,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const safeOriginUrl = getSafeExternalUrl(originUrl);
 
     const isVideo = isVideoMedia(item);
+    const isAnimatedImage = !isVideo && isAnimatedImageMedia(item);
     
     let mediaTag = '';
     if (isVideo) {
@@ -513,7 +540,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return `
       <h2 class="modal-title" id="previewTitle">미디어 최적화 상세 비교</h2>
       <div class="viewer-toolbar">
-        <select aria-label="비교 방식" id="compareMode" ${isVideo ? 'disabled' : ''}>
+        <select aria-label="비교 방식" id="compareMode">
           <option value="split">좌우 비교</option><option value="original">원본 집중 보기</option>
           <option value="optimized">최적화 집중 보기</option><option value="slider" disabled>슬라이더 (이미지 로드 후 사용)</option>
         </select>
@@ -522,6 +549,9 @@ document.addEventListener("DOMContentLoaded", () => {
         <button type="button" data-view="1">100%</button><button type="button" data-view="2">200%</button>
         <button type="button" data-view="4">400%</button><button type="button" data-view="plus" aria-label="확대">+</button>
         <label><input id="syncPreview" type="checkbox" checked> 동기화</label>
+        ${isVideo ? '<button type="button" id="syncMediaPlayback">두 영상 동시 재생</button>' : ''}
+        ${isAnimatedImage ? '<button type="button" id="syncAnimationPlayback">애니메이션 처음부터 동시 재생</button>' : ''}
+        ${(isVideo || isAnimatedImage) ? '<label><input id="loopPlayback" type="checkbox"> 반복 재생</label>' : ''}
         <button type="button" id="toggleInfo" aria-expanded="false">정보 보기</button>
         <button type="button" id="fullscreenPreview">전체화면</button>
       </div>
@@ -597,7 +627,7 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
   }
 
-  function initializeImagePreview(wrapper, image, onSync) {
+  function initializeMediaPreview(wrapper, media, onSync) {
     const controller = new AbortController();
     const state = { scale: 1, x: 0, y: 0, fit: true };
     let drag = null;
@@ -605,17 +635,19 @@ document.addEventListener("DOMContentLoaded", () => {
     badge.className = "zoom-badge";
     badge.setAttribute("aria-label", "현재 확대 배율");
     wrapper.append(badge);
+    const intrinsicWidth = () => media.naturalWidth || media.videoWidth || 0;
+    const intrinsicHeight = () => media.naturalHeight || media.videoHeight || 0;
     function paint(sync = true) {
-      image.style.width = `${image.naturalWidth}px`;
-      image.style.height = `${image.naturalHeight}px`;
-      image.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+      media.style.width = `${intrinsicWidth()}px`;
+      media.style.height = `${intrinsicHeight()}px`;
+      media.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
       badge.textContent = `${Math.round(state.scale * 100)}%`;
       if (sync && onSync) onSync(state.scale, state.x, state.y);
     }
     function fitPreview(sync = true) {
-      if (!image.naturalWidth || !wrapper.clientWidth || !wrapper.clientHeight) return;
+      if (!intrinsicWidth() || !wrapper.clientWidth || !wrapper.clientHeight) return;
       state.fit = true;
-      state.scale = Math.min(wrapper.clientWidth / image.naturalWidth, wrapper.clientHeight / image.naturalHeight, 1);
+      state.scale = Math.min(wrapper.clientWidth / intrinsicWidth(), wrapper.clientHeight / intrinsicHeight(), 1);
       state.x = state.y = 0;
       paint(sync);
     }
@@ -633,13 +665,13 @@ document.addEventListener("DOMContentLoaded", () => {
       paint(false);
     }
     wrapper.addEventListener("wheel", event => {
-      if (!image.naturalWidth) return;
+      if (!intrinsicWidth()) return;
       event.preventDefault();
       const rect = wrapper.getBoundingClientRect();
       zoom(state.scale * (event.deltaY > 0 ? 0.85 : 1 / 0.85), event.clientX - rect.left - rect.width / 2, event.clientY - rect.top - rect.height / 2);
     }, { passive: false, signal: controller.signal });
     wrapper.addEventListener("pointerdown", event => {
-      if (event.button !== 0 || event.target.closest("a, button") || !image.naturalWidth) return;
+      if (event.button !== 0 || event.target.closest("a, button, video") || !intrinsicWidth()) return;
       event.preventDefault();
       wrapper.setPointerCapture(event.pointerId);
       drag = { x: event.clientX, y: event.clientY, tx: state.x, ty: state.y };
@@ -663,6 +695,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function openPreview(item) {
+    let mediaReady = Promise.resolve();
+    const isAnimatedImage = !isVideoMedia(item) && isAnimatedImageMedia(item);
     const previewId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     console.debug("[ARVION][preview:start]", {
       previewId,
@@ -692,6 +726,15 @@ document.addEventListener("DOMContentLoaded", () => {
     modal.setAttribute("aria-hidden", "false");
     modal.inert = false;
     closeButton.focus();
+    await loopPreferenceReady;
+    const loopControl = modalContent.querySelector('#loopPlayback');
+    if (loopControl) {
+      loopControl.checked = preferredLoopPlayback;
+      loopControl.onchange = () => {
+        saveLoopPlayback(loopControl.checked);
+        modalContent.querySelectorAll('.modal-video').forEach(video => { video.loop = loopControl.checked; });
+      };
+    }
 
     const originalImg = modalContent.querySelectorAll(".modal-image")[0];
     const compressedImg = modalContent.querySelectorAll(".modal-image")[1];
@@ -719,7 +762,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Native media loading keeps Range requests streaming instead of buffering the whole file.
     if (isVideo) {
-      modalContent.querySelectorAll('[data-view], #syncPreview').forEach(control => { control.disabled = true; });
+      const videos = [];
       for (const [wrapper, url] of [[originalWrapper, originalUrl], [compressedWrapper, compressedUrl]]) {
         const video = wrapper?.querySelector('.modal-video');
         if (!video) continue;
@@ -737,9 +780,38 @@ document.addEventListener("DOMContentLoaded", () => {
           if (message) message.textContent = '동영상을 재생하지 못했습니다. 접근 권한과 지원 코덱을 확인해 주세요.';
         }, { once: true });
         video.src = safeUrl;
+        video.loop = preferredLoopPlayback;
         wrapper.classList.add('loaded');
+        videos.push(video);
       }
-      return;
+      let isSyncingVideo = false;
+      const syncVideoTime = (source, target) => {
+        if (isSyncingVideo || !modalContent.querySelector('#syncPreview')?.checked || !Number.isFinite(source.currentTime)) return;
+        if (Math.abs(target.currentTime - source.currentTime) < 0.08) return;
+        isSyncingVideo = true;
+        target.currentTime = source.currentTime;
+        isSyncingVideo = false;
+      };
+      if (videos.length === 2) {
+        videos[0].addEventListener('seeked', () => syncVideoTime(videos[0], videos[1]));
+        videos[1].addEventListener('seeked', () => syncVideoTime(videos[1], videos[0]));
+        modalContent.querySelector('#syncMediaPlayback').onclick = async () => {
+          const startAt = 0;
+          videos.forEach(video => { video.pause(); video.currentTime = startAt; });
+          try {
+            await Promise.all(videos.map(video => video.play()));
+          } catch {
+            showToast('두 영상을 재생하지 못했습니다. 브라우저의 미디어 재생 권한을 확인해 주세요.');
+          }
+        };
+      }
+      mediaReady = Promise.all(videos.map(video => new Promise(resolve => {
+        if (video.readyState >= 1) resolve();
+        else {
+          video.addEventListener('loadedmetadata', resolve, { once: true });
+          video.addEventListener('error', resolve, { once: true });
+        }
+      })));
     }
 
     async function loadImage(imageElement, src, previewApi) {
@@ -841,14 +913,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let isSyncing = false;
 
-    const originalPreview = originalWrapper && originalImg ? initializeImagePreview(originalWrapper, originalImg, (scale, tx, ty) => {
+    const originalMedia = originalImg || originalWrapper?.querySelector('.modal-video');
+    const compressedMedia = compressedImg || compressedWrapper?.querySelector('.modal-video');
+    const originalPreview = originalWrapper && originalMedia ? initializeMediaPreview(originalWrapper, originalMedia, (scale, tx, ty) => {
       if (isSyncing || !modalContent.querySelector("#syncPreview")?.checked) return;
       isSyncing = true;
       if (compressedPreview) compressedPreview.setSyncState(scale, tx, ty);
       isSyncing = false;
     }) : null;
 
-    const compressedPreview = compressedWrapper && compressedImg ? initializeImagePreview(compressedWrapper, compressedImg, (scale, tx, ty) => {
+    const compressedPreview = compressedWrapper && compressedMedia ? initializeMediaPreview(compressedWrapper, compressedMedia, (scale, tx, ty) => {
       if (isSyncing || !modalContent.querySelector("#syncPreview")?.checked) return;
       isSyncing = true;
       if (originalPreview) originalPreview.setSyncState(scale, tx, ty);
@@ -891,12 +965,37 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     await Promise.all([
       comparisonPreferenceReady,
+      mediaReady,
       originalImg && loadImage(originalImg, originalUrl, originalPreview),
       compressedImg && loadImage(compressedImg, compressedUrl, compressedPreview),
     ]);
     if (!active) return;
+    if (isAnimatedImage && originalImg && compressedImg) {
+      const restartAnimationsTogether = async () => {
+        const sources = [originalImg, compressedImg].map(image => image.currentSrc || image.src);
+        if (sources.some(src => !src)) return;
+        [originalImg, compressedImg].forEach(image => image.removeAttribute('src'));
+        await new Promise(resolve => requestAnimationFrame(() => {
+          [originalImg, compressedImg].forEach((image, index) => { image.src = sources[index]; });
+          resolve();
+        }));
+        await Promise.all([originalImg, compressedImg].map(image => new Promise(resolve => {
+          if (image.complete) resolve();
+          else {
+            image.addEventListener('load', resolve, { once: true });
+            image.addEventListener('error', resolve, { once: true });
+          }
+        })));
+      };
+      modalContent.querySelector('#syncAnimationPlayback').onclick = restartAnimationsTogether;
+      await restartAnimationsTogether();
+    }
     const sliderOption = mode.querySelector('[value="slider"]');
-    const compatible = originalImg?.naturalWidth > 0 && originalImg.naturalWidth === compressedImg?.naturalWidth && originalImg.naturalHeight === compressedImg?.naturalHeight;
+    const originalWidth = originalMedia?.naturalWidth || originalMedia?.videoWidth || 0;
+    const originalHeight = originalMedia?.naturalHeight || originalMedia?.videoHeight || 0;
+    const compressedWidth = compressedMedia?.naturalWidth || compressedMedia?.videoWidth || 0;
+    const compressedHeight = compressedMedia?.naturalHeight || compressedMedia?.videoHeight || 0;
+    const compatible = originalWidth > 0 && originalWidth === compressedWidth && originalHeight === compressedHeight;
     sliderOption.disabled = !compatible;
     sliderOption.textContent = compatible ? "슬라이더 비교" : "슬라이더 (동일 해상도 필요)";
     if (!modeSelected) mode.value = preferredComparisonMode === "slider" && !compatible ? "split" : preferredComparisonMode;

@@ -1149,6 +1149,7 @@ td {
 .modal .image-preview { height: auto; flex: 1; min-height: 0; border-radius: 2px; touch-action: none; cursor: grab; }
 .modal .image-preview:active { cursor: grabbing; }
 .modal .image-preview img { max-width: none; max-height: none; flex-shrink: 0; transform-origin: center; user-select: none; }
+.modal .image-preview video { max-width: none; max-height: none; flex-shrink: 0; transform-origin: center; user-select: none; }
 .zoom-badge { position: absolute; bottom: 10px; right: 10px; padding: 4px 7px; background: #151b26; color: #fff; border-radius: 3px; font-size: 0.75rem; pointer-events: none; }
 .comparison-wrapper[data-mode="original"], .comparison-wrapper[data-mode="optimized"] { grid-template-columns: minmax(0, 1fr); }
 .comparison-wrapper[data-mode="original"] .img-box:nth-child(2), .comparison-wrapper[data-mode="optimized"] .img-box:first-child { display: none; }
