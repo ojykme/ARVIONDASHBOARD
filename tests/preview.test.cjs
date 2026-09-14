@@ -48,3 +48,35 @@ test('simultaneous previews use independent rules and clean up after fetch failu
   assert.match(results[1].reason.message, /network failure/);
   assert.equal(active.size, 0);
 });
+
+test('video ranges share one row without merging states, tabs, query strings or images', () => {
+  const source = readFileSync(join(__dirname, '../src/background/background.js'), 'utf8');
+  let receive;
+  const imageDataMap = new Map();
+  const context = vm.createContext({ URL, imageDataMap, logNetworkEvent() {}, chrome: {
+    webRequest: { onResponseStarted: { addListener(fn) { receive = fn; } } },
+    runtime: { sendMessage() {} },
+  }});
+  vm.runInContext(source.slice(source.indexOf('chrome.webRequest.onResponseStarted.addListener'), source.indexOf('// webNavigation.onCommitted:')), context);
+  const send = (tabId = 1, status = 'HIT-S3', url = 'https://example.test/a.mp4', contentType = 'video/mp4', range = 'bytes 0-1/649638') => receive({
+    tabId, type: contentType.startsWith('video') ? 'media' : 'image', url, statusCode: 206,
+    responseHeaders: [
+      { name: 'Content-Type', value: contentType }, { name: 'X-Arvion-Cache', value: status },
+      { name: 'Content-Length', value: '2' }, { name: 'Content-Range', value: range },
+    ],
+  });
+  send(); send(1, 'HIT-S3', 'https://example.test/a.mp4', 'video/mp4', 'bytes 200-201/649638'); send(); send();
+  assert.equal(imageDataMap.get(1).length, 1);
+  assert.equal(imageDataMap.get(1)[0].requestCount, 4);
+  assert.equal(imageDataMap.get(1)[0].compressedSize, '649638');
+  assert.equal(imageDataMap.get(1).reduce((n, row) => n + Number(row.compressedSize), 0), 649638);
+  send(1, 'MISS-ASYNC-QUEUED');
+  assert.equal(imageDataMap.get(1).length, 2);
+  assert.equal(imageDataMap.get(1)[1].cacheStatus, 'MISS-ASYNC-QUEUED');
+  send(2); assert.equal(imageDataMap.get(2).length, 1);
+  send(1, 'HIT-S3', 'https://example.test/a.mp4?v=2');
+  assert.equal(imageDataMap.get(1).length, 3);
+  send(1, 'HIT-S3', 'https://example.test/a.png', 'image/png');
+  send(1, 'HIT-S3', 'https://example.test/a.png', 'image/png');
+  assert.equal(imageDataMap.get(1).length, 5);
+});

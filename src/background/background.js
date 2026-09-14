@@ -145,7 +145,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 });*/
 
-chrome.webRequest.onCompleted.addListener((details) => {
+// Capture response headers before long-running video/Range transfers complete.
+chrome.webRequest.onResponseStarted.addListener((details) => {
   let targetTabId = details.tabId;
 
   if (details.initiator?.startsWith("chrome-extension://") || details.type === "image" || details.type === "media") {
@@ -183,8 +184,6 @@ chrome.webRequest.onCompleted.addListener((details) => {
   const headerObj = {};
   headers.forEach(header => headerObj[header.name.toLowerCase()] = header.value);
 
-  // x-arvionstream-version 또는 x-image-processed 헤더가 있어야만 분석 대상
-  if (!headerObj["x-arvionstream-version"] && !headerObj["x-image-processed"]) return;
 
   const contentType = (headerObj["content-type"] || "").toLowerCase();
   const cacheStatus = headerObj["x-arvion-cache"] || headerObj["x-cache"] || headerObj["x-cache-status"] || "N/A";
@@ -193,6 +192,7 @@ chrome.webRequest.onCompleted.addListener((details) => {
     headerObj["x-arvion-job-id"] ||
     headerObj["x-original-size"]
   );
+  if (!headerObj["x-arvionstream-version"] && !headerObj["x-image-processed"] && !hasArvionMetadata) return;
   const isMediaResource = details.type === "image" || details.type === "media" || /^image\//.test(contentType) || /^video\//.test(contentType);
   if (!isMediaResource && !hasArvionMetadata) return;
 
@@ -215,11 +215,14 @@ chrome.webRequest.onCompleted.addListener((details) => {
 
   let imageData = imageDataMap.get(targetTabId) || [];
 
-  imageData.push({
+  const isVideo = /^video\//.test(contentType) || /\.(mp4|webm|mov|m4v|ogv)(?:[?#]|$)/i.test(details.url);
+  const rangeTotal = /^bytes\s+\d+-\d+\/(\d+)$/i.exec(headerObj["content-range"] || "")?.[1];
+  const resourceSize = rangeTotal || headerObj["content-length"] || "N/A";
+  const entry = {
       url: details.url,
       contentType: headerObj["content-type"] || "unknown",
-      originalSize: headerObj["x-original-size"] || headerObj["x-original-content-length"] || headerObj["content-length"] || headerObj["content-range"] || "N/A",
-      compressedSize: headerObj["x-output-size"] || headerObj["content-length"] || "N/A",
+      originalSize: headerObj["x-original-size"] || headerObj["x-original-content-length"] || resourceSize,
+      compressedSize: headerObj["x-output-size"] || resourceSize,
       compressionRatio: headerObj["x-compression-ratio"] || "N/A",
       processingTime: headerObj["x-processing-time"] || "N/A",
       originalFormat: headerObj["x-original-format"] || (headerObj["content-type"] ? headerObj["content-type"].split("/")[1] : "unknown"),
@@ -232,7 +235,21 @@ chrome.webRequest.onCompleted.addListener((details) => {
       cacheStatus,
       jobId: headerObj["x-arvion-job-id"] || "N/A",
       cacheControl: headerObj["cache-control"] || "N/A",
-  });
+  };
+
+  // Range/seek requests describe the same video, not additional full files.
+  // Keep distinct response states and representations (including queued responses).
+  const videoKey = isVideo ? JSON.stringify([
+    entry.url, entry.originUrl, entry.cacheStatus, entry.originalSize,
+    entry.compressedSize, entry.originalFormat, entry.convertedFormat,
+    headerObj["etag"] || headerObj["last-modified"] || "",
+  ]) : null;
+  const previousIndex = videoKey === null ? -1 : imageData.findIndex(row => row.videoKey === videoKey);
+  if (previousIndex >= 0) {
+    imageData[previousIndex] = { ...entry, videoKey, requestCount: (imageData[previousIndex].requestCount || 1) + 1 };
+  } else {
+    imageData.push({ ...entry, ...(isVideo ? { videoKey, requestCount: 1 } : {}) });
+  }
 
   if (imageData.length > 1000) {
       imageData.shift();

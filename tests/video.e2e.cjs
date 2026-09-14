@@ -1,0 +1,38 @@
+﻿const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const {pathToFileURL} = require('node:url');
+const {chromium} = require('playwright');
+const root = path.resolve(__dirname, '..');
+const source = fs.readFileSync(path.join(root,'src/dashboard/view.js'),'utf8');
+const ctx = vm.createContext({URL});
+vm.runInContext(source.split('document.addEventListener')[0],ctx);
+for (const item of [{contentType:'video/mp4'}, {originalFormat:'mp4'}, {url:'https://example.test/a.MP4?token=x'}]) assert.equal(ctx.isVideoMedia(item),true);
+assert.equal(ctx.isVideoMedia({contentType:'image/webp',url:'https://example.test/a.webp'}),false);
+const bg = fs.readFileSync(path.join(root,'src/background/background.js'),'utf8');
+let receive;
+const data = new Map();
+const bgContext = vm.createContext({URL, console, imageDataMap:data, logNetworkEvent(){},chrome:{webRequest:{onResponseStarted:{addListener(fn){receive=fn;}}},runtime:{sendMessage(){}}}});
+vm.runInContext(bg.slice(bg.indexOf('chrome.webRequest.onResponseStarted.addListener'),bg.indexOf('// webNavigation.onCommitted:')),bgContext);
+receive({tabId:17,type:'media',url:'https://example.test/a.mp4',statusCode:206,responseHeaders:[{name:'Content-Type',value:'video/mp4'},{name:'X-Arvion-Cache',value:'HIT-S3'},{name:'X-Original-Size',value:'951370'},{name:'X-Output-Size',value:'649638'}]});
+assert.equal(data.get(17)[0].contentType,'video/mp4');
+assert.equal(data.get(17)[0].cacheStatus,'HIT-S3');
+(async()=>{const browser=await chromium.launch({channel:'chrome',headless:true});try{
+const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.addInitScript(()=>{
+const url='https://1a07aa02639ee04c.kinxzone.com/data/goods/ohbokhouse/mp4/KakaoTalk_Video_20260818143258.mp4';
+window.chrome={devtools:{inspectedWindow:{tabId:17}},storage:{local:{get:(_,cb)=>cb({}),set:(_,cb)=>cb?.()}},runtime:{id:'fixture',onMessage:{addListener(){}},sendMessage(m,cb){if(m.type==='getInitialData')setTimeout(()=>cb({data:[{url,originUrl:url.replace('1a07aa02639ee04c.kinxzone.com','spdy-flexg-ha.flexgate.co.kr'),contentType:'video/mp4',originalFormat:'mp4',convertedFormat:'mp4',originalSize:951370,compressedSize:649638,cacheStatus:'HIT-S3'}]}),0);else cb?.({});}}};});
+await page.goto(pathToFileURL(path.join(root,'view.html')).href);
+await page.locator('tr[data-url]').click();
+assert.equal(await page.locator('video').count(),2);
+await page.waitForFunction(()=>[...document.querySelectorAll('video')].every(v=>v.readyState>=1),null,{timeout:45000});
+const metadata=await page.locator('video').evaluateAll(videos=>videos.map(v=>({width:v.videoWidth,height:v.videoHeight,duration:v.duration,error:v.error?.code})));
+assert.ok(metadata.every(v=>v.width>0&&v.duration>0&&!v.error));
+await page.locator('video').evaluateAll(async videos=>{await Promise.all(videos.map(v=>{v.muted=true;return v.play();}));});
+await page.waitForFunction(()=>[...document.querySelectorAll('video')].every(v=>v.currentTime>0.2));
+await page.evaluate(()=>window.testVideos=[...document.querySelectorAll('video')]);
+await page.locator('#imageViewer .close').click();
+assert.ok(await page.evaluate(()=>window.testVideos.every(v=>v.paused&&!v.getAttribute('src'))));
+assert.deepEqual(errors,[]);console.log('PASS: MP4 recognition; early 206 capture; real original/optimized metadata and playback; close cleanup',metadata);
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

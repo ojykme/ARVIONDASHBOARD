@@ -1,3 +1,13 @@
+function isVideoMedia(item) {
+  const formats = [item.contentType, item.originalFormat, item.convertedFormat,
+    item.outputFormat, item.imageFormat, item.targetFormat];
+  if (formats.some(value => /^(video\/|mp4$|webm$|mov$|m4v$|ogv$|ogg$)/i.test(String(value || '').trim()))) return true;
+  return [item.url, item.originUrl].some(value => {
+    try { return /\.(mp4|webm|mov|m4v|ogv)$/i.test(new URL(value).pathname); }
+    catch { return false; }
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const tableBody = document.querySelector("#data-table tbody");
   const statsContainer = document.getElementById("statsContainer");
@@ -491,27 +501,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const originUrl = item.originUrl || requestedUrl;
     const safeOriginUrl = getSafeExternalUrl(originUrl);
 
-    const isVideo = String(item.originalFormat).toLowerCase().includes("video") || 
-                    String(item.convertedFormat || item.outputFormat || item.imageFormat || item.targetFormat).toLowerCase().includes("video");
+    const isVideo = isVideoMedia(item);
     
     let mediaTag = '';
     if (isVideo) {
-      mediaTag = `
-        <div class="video-placeholder" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; width:100%; color:var(--text-muted); text-align:center; padding:20px;">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px; opacity:0.7;">
-            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
-            <line x1="7" y1="2" x2="7" y2="22"></line>
-            <line x1="17" y1="2" x2="17" y2="22"></line>
-            <line x1="2" y1="12" x2="22" y2="12"></line>
-            <line x1="2" y1="7" x2="7" y2="7"></line>
-            <line x1="2" y1="17" x2="7" y2="17"></line>
-            <line x1="17" y1="17" x2="22" y2="17"></line>
-            <line x1="17" y1="7" x2="22" y2="7"></line>
-          </svg>
-          <p style="font-size:0.9rem; margin-bottom:16px;">DevTools 보안 정책으로 인해<br>동영상은 새 탭에서만 재생할 수 있습니다.</p>
-          <button class="preview-btn video-open-btn" data-src="" style="padding:10px 20px; background:var(--primary); color:var(--text-inverse); border:none; border-radius:8px; font-weight:700; cursor:pointer;">새 탭에서 동영상 보기</button>
-        </div>
-      `;
+      mediaTag = '<video class="modal-video" controls playsinline preload="metadata" style="display:block;width:100%;height:100%;min-height:240px;object-fit:contain;background:#000" aria-label="동영상 미리보기"></video>';
     } else {
       mediaTag = '<img class="modal-image" src="" alt="Preview" />';
     }
@@ -721,23 +715,30 @@ document.addEventListener("DOMContentLoaded", () => {
     const originalWrapper = modalContent.querySelectorAll('.image-preview')[0];
     const compressedWrapper = modalContent.querySelectorAll('.image-preview')[1];
     
-    const isVideo = String(item.originalFormat).toLowerCase().includes("video") || 
-                    String(item.convertedFormat || item.outputFormat || item.imageFormat || item.targetFormat).toLowerCase().includes("video");
+    const isVideo = isVideoMedia(item);
 
-    // 비디오일 경우 처리 로직 (버튼 링크 연결 및 로더 제거)
+    // Native media loading keeps Range requests streaming instead of buffering the whole file.
     if (isVideo) {
       modalContent.querySelectorAll('[data-view], #syncPreview').forEach(control => { control.disabled = true; });
-      if (originalWrapper) {
-        originalWrapper.classList.add('loaded');
-        const btn = originalWrapper.querySelector('.video-open-btn');
-        if (btn) btn.onclick = () => window.open(originalUrl, '_blank');
+      for (const [wrapper, url] of [[originalWrapper, originalUrl], [compressedWrapper, compressedUrl]]) {
+        const video = wrapper?.querySelector('.modal-video');
+        if (!video) continue;
+        const safeUrl = getSafeExternalUrl(url);
+        if (!safeUrl) {
+          wrapper.classList.add('has-error', 'loaded');
+          continue;
+        }
+        video.addEventListener('loadedmetadata', () => wrapper.classList.add('loaded'), { once: true });
+        video.addEventListener('error', () => {
+          wrapper.classList.add('has-error', 'loaded');
+          const panel = wrapper.querySelector('.preview-error');
+          if (panel) panel.classList.add('visible');
+          const message = wrapper.querySelector('.preview-error-message');
+          if (message) message.textContent = '동영상을 재생하지 못했습니다. 접근 권한과 지원 코덱을 확인해 주세요.';
+        }, { once: true });
+        video.src = safeUrl;
+        wrapper.classList.add('loaded');
       }
-      if (compressedWrapper) {
-        compressedWrapper.classList.add('loaded');
-        const btn = compressedWrapper.querySelector('.video-open-btn');
-        if (btn) btn.onclick = () => window.open(compressedUrl, '_blank');
-      }
-      // 동영상은 확대/축소 등 이미지 전용 기능을 사용하지 않음
       return;
     }
 
@@ -918,6 +919,11 @@ document.addEventListener("DOMContentLoaded", () => {
     
     modalContent.querySelectorAll(".modal-image").forEach(media => {
       if (media.src && media.src.startsWith("blob:")) URL.revokeObjectURL(media.src);
+    });
+    modalContent.querySelectorAll("video").forEach(video => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
     });
     modalContent.innerHTML = "";
     if (pendingData !== null) {
