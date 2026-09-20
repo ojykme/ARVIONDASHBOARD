@@ -1,6 +1,7 @@
 /* src/dashboard/style.css */
 
 /* 1. 디자인 시스템 토큰 & 테마 스위치 정의 */
+.dashboard-logo{width:150px;height:48px;object-fit:contain;object-position:left center;flex:0 0 auto}
 :root[data-theme="light"] {
   --bg-gradient: radial-gradient(circle at 10% 20%, rgba(241, 245, 249, 1) 0%, rgba(226, 232, 240, 1) 90%);
   --bg-main: #f1f5f9;
