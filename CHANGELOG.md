@@ -1,6 +1,18 @@
 ﻿# Changelog
 
-## Unreleased — 2026-09-14
+## Unreleased — 2026-09-22
+
+### Added
+- ARVIONSTREAM 응답 상태 계약 문서와 2026-09-22 작업 일지를 추가했다.
+
+### Changed
+- 백그라운드 요청 상태와 대시보드 표시를 정리했다.
+- 대시보드 컨트롤·스타일을 ARVIONSTREAM Admin V2의 상태 표현과 맞췄다.
+
+### Operations
+- 커밋 `752bb9b`를 `main` 브랜치에 푸시했다.
+
+## 이전 Unreleased — 2026-09-14
 
 ### 수정
 - 동영상 응답 헤더를 요청 완료가 아닌 응답 시작 시 수집하여 스트리밍 중에도 대시보드에 표시한다.
