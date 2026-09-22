@@ -17,6 +17,21 @@ function isAnimatedImageMedia(item) {
   });
 }
 
+function deliveryOf(item) {
+  const value = String(item.deliveryStatus || item.delivery || item.cacheStatus || "").toUpperCase();
+  if (value === "HIT" || value === "HIT-S3") return value === "HIT" ? "HIT-QUICK" : "HIT-ASYNC";
+  if (value === "MISS-ASYNC-QUEUED") return "QUEUED";
+  if (value === "MISS-FALLBACK") return "FALLBACK";
+  if (value === "BYPASS-NONIMAGE") return "BYPASS";
+  return value || "N/A";
+}
+
+function sourceOf(item) {
+  const value = String(item.cacheSource || "").toUpperCase();
+  if (value) return value;
+  return ({ HIT: "REDIS", "HIT-S3": "S3", "MISS-ASYNC-QUEUED": "ORIGIN", "MISS-FALLBACK": "FALLBACK", BYPASS: "BYPASS", "BYPASS-NONIMAGE": "BYPASS" })[String(item.cacheStatus || "").toUpperCase()] || "N/A";
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const tableBody = document.querySelector("#data-table tbody");
   const statsContainer = document.getElementById("statsContainer");
@@ -262,9 +277,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function getFilteredData(items) {
     return items.filter(item => {
-      const status = String(item.cacheStatus ?? "").toLowerCase();
-      if (currentFilter === "hit") return status.includes("hit");
-      if (currentFilter === "miss") return status.includes("miss");
+      const status = deliveryOf(item);
+      if (currentFilter === "hit") return status === "HIT-QUICK" || status === "HIT-ASYNC";
+      if (currentFilter === "miss") return status === "FALLBACK" || status === "ERROR";
       return true;
     });
   }
@@ -325,7 +340,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const rows = items.length;
     const originalTotal = items.reduce((acc, item) => acc + (Number(item.originalSize) || 0), 0);
     const compressedTotal = items.reduce((acc, item) => acc + (Number(item.compressedSize) || 0), 0);
-    const hits = items.filter(item => String(item.cacheStatus ?? "").toLowerCase().includes("hit")).length;
+    const hits = items.filter(item => deliveryOf(item) === "HIT-QUICK" || deliveryOf(item) === "HIT-ASYNC").length;
     const hitRate = rows ? `${Math.round((hits / rows) * 100)}%` : "0%";
     const savings = originalTotal > 0 ? Math.max(0, (1 - compressedTotal / originalTotal) * 100) : 0;
     const savedBandwidth = originalTotal > 0 ? Math.max(0, originalTotal - compressedTotal) : 0;
@@ -337,7 +352,10 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="savings-meter" role="meter" aria-label="오리진 대비 절감 비율" aria-valuemin="0" aria-valuemax="100"><span></span></div>
       </div>
       <div class="stat-card"><span class="stat-label">평균 용량 절감율</span><span class="stat-value" data-stat="percent"></span></div>
-      <div class="stat-card"><span class="stat-label">실제 전송량</span><span class="stat-value" data-stat="actual"></span></div>`;
+      <div class="stat-card"><span class="stat-label">실제 전송량</span><span class="stat-value" data-stat="actual"></span></div>
+      <div class="stat-card"><span class="stat-label">Core 버전</span><span class="stat-value" data-core-version>확인 중…</span></div>`;
+    const versions = [...new Set(items.map(item => item.streamVersion || item.arvionVersion).filter(value => value && value !== 'N/A'))];
+    statsContainer.querySelector('[data-core-version]').textContent = versions.length === 1 ? versions[0] : versions.length > 1 ? versions.join(' · ') : '확인 불가';
     statsContainer.querySelector('[data-hit]').textContent = `(${hitRate})`;
     const meter = statsContainer.querySelector('.savings-meter');
     meter.setAttribute('aria-valuenow', savings.toFixed(1));
@@ -371,7 +389,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (rows.length === 0) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="8" style="text-align: center; padding: 48px; color: var(--text-muted); font-weight: 500;">
+          <td colspan="9" style="text-align: center; padding: 48px; color: var(--text-muted); font-weight: 500;">
             실시간 캡처된 미디어 트래픽 리소스가 없습니다.
           </td>
         </tr>
@@ -394,16 +412,19 @@ document.addEventListener("DOMContentLoaded", () => {
       const compressedSize = Number(item.compressedSize) || 0;
       const savings = originalSize > 0 ? Math.round((1 - compressedSize / originalSize) * 10000) / 100 : null;
       const convertedFormat = normalizeFormat(item.convertedFormat || item.outputFormat || item.imageFormat || item.targetFormat);
-      const statusText = item.cacheStatus ?? "N/A";
+      const statusText = deliveryOf(item);
+      const sourceText = sourceOf(item);
+      const cdnText = item.cdnCacheStatus || "N/A";
+      const coreVersion = item.streamVersion || item.arvionVersion || "N/A";
       const statusKey = String(statusText).toLowerCase();
 
-      const statusClass = statusKey.includes("hit")
+      const statusClass = statusKey === "hit-quick" || statusKey === "hit-async"
         ? "badge badge-success"
-        : statusKey.includes("miss")
+        : statusKey === "fallback" || statusKey === "error"
           ? "badge badge-danger"
           : statusKey.includes("cache") || statusKey.includes("stored") || statusKey.includes("ok")
             ? "badge badge-info"
-            : statusKey.includes("pending") || statusKey.includes("processing") || statusKey.includes("waiting")
+            : statusKey === "queued" || statusKey.includes("pending") || statusKey.includes("processing") || statusKey.includes("waiting")
               ? "badge badge-warning"
               : statusKey.includes("error") || statusKey.includes("fail") || statusKey.includes("invalid")
                 ? "badge badge-alert"
@@ -417,7 +438,8 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="num numeric">${formatTime(item.processingTime)}</td>
         <td>${normalizeFormat(item.originalFormat)}</td>
         <td>${convertedFormat}</td>
-        <td><span class="${statusClass}">${escapeHtml(statusText)}</span></td>
+        <td><code>${escapeHtml(coreVersion)}</code></td>
+        <td><span class="${statusClass}" title="전달: ${escapeHtml(statusText)} · 소스: ${escapeHtml(sourceText)} · CDN: ${escapeHtml(cdnText)}">${escapeHtml(statusText)}</span><small class="status-meta">${escapeHtml(sourceText)} · CDN ${escapeHtml(cdnText)}</small></td>
       `;
       if (row._markup !== markup) { row.innerHTML = markup; row._markup = markup; }
     });

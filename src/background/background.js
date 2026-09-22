@@ -186,7 +186,32 @@ chrome.webRequest.onResponseStarted.addListener((details) => {
 
 
   const contentType = (headerObj["content-type"] || "").toLowerCase();
-  const cacheStatus = headerObj["x-arvion-cache"] || headerObj["x-cache"] || headerObj["x-cache-status"] || "N/A";
+  // The extension accepts the provider-neutral Arvion contract while keeping
+  // the legacy header for older Core deployments.
+  const legacyCacheStatus = headerObj["x-arvion-cache"] || "";
+  const deliveryHeader = String(headerObj["x-arvion-delivery"] || "").toUpperCase();
+  const sourceHeader = String(headerObj["x-arvion-cache-source"] || "").toUpperCase();
+  const normalizeDelivery = (value) => {
+    switch (String(value || "").toUpperCase()) {
+      case "HIT": return "HIT-QUICK";
+      case "HIT-S3": return "HIT-ASYNC";
+      case "MISS-ASYNC-QUEUED": return "HIT-ASYNC";
+      case "MISS-FALLBACK": return "FALLBACK";
+      case "BYPASS-NONIMAGE": return "BYPASS";
+      default: return String(value || "").toUpperCase();
+    }
+  };
+  const deliveryStatus = deliveryHeader || normalizeDelivery(legacyCacheStatus) || "N/A";
+  const cacheSource = sourceHeader || ({
+    "HIT": "REDIS",
+    "HIT-S3": "S3",
+      "MISS-ASYNC-QUEUED": "ORIGIN",
+    "MISS-FALLBACK": "FALLBACK",
+    "BYPASS": "BYPASS",
+    "BYPASS-NONIMAGE": "BYPASS",
+  }[String(legacyCacheStatus).toUpperCase()] || "N/A");
+  const cdnCacheStatus = headerObj["x-cache"] || headerObj["x-cache-status"] || "N/A";
+  const cacheStatus = legacyCacheStatus || deliveryStatus;
   const hasArvionMetadata = Boolean(
     headerObj["x-arvion-cache"] ||
     headerObj["x-arvion-job-id"] ||
@@ -230,8 +255,9 @@ chrome.webRequest.onResponseStarted.addListener((details) => {
       originUrl,
       originalDomain: originalDomain || "N/A",
       streamVersion: headerObj["x-arvionstream-version"] || "N/A",
-      // HIT-S3는 비동기 저장이 완료된 결과를 S3 캐시에서 제공한 상태다.
-      // 서버가 보낸 캐시 상태 문자열을 축약하거나 정규화하지 않고 그대로 전달한다.
+      deliveryStatus,
+      cacheSource,
+      cdnCacheStatus,
       cacheStatus,
       jobId: headerObj["x-arvion-job-id"] || "N/A",
       cacheControl: headerObj["cache-control"] || "N/A",

@@ -1127,6 +1127,7 @@ td {
 .stat-value, .zoom-badge { font-variant-numeric: tabular-nums; }
 .stat-value small { color: var(--success); font-size: 0.8rem; }
 .reception-status { color: var(--text-muted); font-size: 0.7rem; white-space: nowrap; }
+.status-meta { display: block; margin-top: 3px; color: var(--text-muted); font-size: 0.68rem; white-space: nowrap; }
 .reception-status::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--text-muted); }
 .reception-status.receiving::before { background: var(--success); box-shadow: 0 0 0 3px var(--success-bg); }
 .incoming-row { animation: incoming-row 1.2s ease-out; }
