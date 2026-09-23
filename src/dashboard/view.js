@@ -462,7 +462,7 @@ document.addEventListener("DOMContentLoaded", () => {
       labels,
       datasets: [
         {
-          label: "원본 사이즈",
+          label: "원본 크기",
           data: originalSizes,
           backgroundColor: currentTheme === "light" ? "rgba(37, 99, 235, 0.75)" : "rgba(59, 130, 246, 0.7)",
           borderColor: currentTheme === "light" ? "rgba(37, 99, 235, 1)" : "rgba(59, 130, 246, 1)",
@@ -470,7 +470,7 @@ document.addEventListener("DOMContentLoaded", () => {
           borderRadius: 4,
         },
         {
-          label: "최적화 사이즈",
+          label: "실제 전달 크기",
           data: compressedSizes,
           backgroundColor: "rgba(16, 185, 129, 0.75)",
           borderColor: "rgba(16, 185, 129, 1)",
@@ -604,7 +604,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <span class="meta-value">${originalSize}</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">최적화 크기</span>
+          <span class="meta-label">실제 전달 크기</span>
           <span class="meta-value">${compressedSize}</span>
         </div>
       </div>
