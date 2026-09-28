@@ -171,6 +171,58 @@ input:checked + .slider:before {
   gap: 8px;
 }
 
+.mapping-item.mapping-disabled {
+  opacity: 0.58;
+}
+
+.mapping-item.mapping-disabled .domain-from {
+  color: var(--text-muted);
+}
+
+.mapping-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.mapping-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex: 0 0 auto;
+  border: 0;
+  background: var(--border-color);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 999px;
+  transition: background-color .2s ease;
+}
+
+.mapping-switch span {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  top: 3px;
+  left: 3px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,.25);
+}
+
+.mapping-switch[aria-checked="true"] {
+  background: var(--primary);
+}
+
+.mapping-switch[aria-checked="true"] span {
+  transform: translateX(16px);
+}
+
+.mapping-switch:hover {
+  background: var(--primary-hover);
+}
+
 .mapping-info {
   display: flex;
   flex-direction: column;

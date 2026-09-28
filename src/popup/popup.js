@@ -30,12 +30,13 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        if (mappings.some((mapping) => mapping.from === fromVal)) {
-            alert("이미 등록된 원본 도메인입니다.");
+        if (mappings.some((mapping) => mapping.from === fromVal && mapping.to === toVal)) {
+            alert("이미 등록된 도메인 매핑입니다.");
             return;
         }
 
-        mappings.push({ from: fromVal, to: toVal });
+        const hasEnabledMapping = mappings.some((mapping) => mapping.from === fromVal && mapping.enabled !== false);
+        mappings.push({ from: fromVal, to: toVal, enabled: !hasEnabledMapping });
         chrome.storage.local.set({ domainMappings: mappings }, () => {
             if (chrome.runtime.lastError) {
                 alert("도메인 매핑 저장에 실패했습니다.");
@@ -73,6 +74,30 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    function toggleMapping(index) {
+        if (!Number.isInteger(index) || index < 0 || index >= mappings.length) return;
+
+        const mapping = mappings[index];
+        const shouldEnable = mapping.enabled === false;
+        if (shouldEnable) {
+            mappings = mappings.map((candidate, candidateIndex) => {
+                if (candidateIndex === index) return { ...candidate, enabled: true };
+                if (candidate.from === mapping.from) return { ...candidate, enabled: false };
+                return candidate;
+            });
+        } else {
+            mappings[index] = { ...mapping, enabled: false };
+        }
+        chrome.storage.local.set({ domainMappings: mappings }, () => {
+            if (chrome.runtime.lastError) {
+                alert("도메인 매핑 상태 저장에 실패했습니다.");
+                return;
+            }
+
+            renderMappings();
+        });
+    }
+
     function renderMappings() {
         mappingList.replaceChildren();
 
@@ -87,6 +112,7 @@ document.addEventListener("DOMContentLoaded", () => {
         mappings.forEach((mapping, index) => {
             const item = document.createElement("div");
             item.className = "mapping-item";
+            if (mapping.enabled === false) item.classList.add("mapping-disabled");
 
             const info = document.createElement("div");
             info.className = "mapping-info";
@@ -120,7 +146,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 </svg>
             `;
 
-            item.append(info, deleteButton);
+            const toggleButton = document.createElement("button");
+            toggleButton.type = "button";
+            toggleButton.className = "mapping-switch";
+            toggleButton.setAttribute("role", "switch");
+            toggleButton.setAttribute("aria-checked", mapping.enabled !== false ? "true" : "false");
+            toggleButton.title = mapping.enabled === false ? "이 도메인에 CDN 적용" : "이 도메인의 CDN 적용 중지";
+            toggleButton.setAttribute("aria-label", toggleButton.title);
+            toggleButton.innerHTML = '<span aria-hidden="true"></span>';
+            toggleButton.addEventListener("click", () => toggleMapping(index));
+
+            const actions = document.createElement("div");
+            actions.className = "mapping-actions";
+            actions.append(toggleButton, deleteButton);
+
+            item.append(info, actions);
             mappingList.appendChild(item);
         });
     }
