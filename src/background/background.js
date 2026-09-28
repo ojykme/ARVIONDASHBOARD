@@ -435,7 +435,7 @@ function updateDemoRedirectRules(isEnabled, mappings) {
         return;
     }
 
-    const newRules = mappings.map((m, index) => {
+    const newRules = mappings.filter((m) => m.enabled !== false).map((m, index) => {
         return {
             id: 10 + index, // 고유 ID 할당 (10부터 시작)
             priority: 2,
