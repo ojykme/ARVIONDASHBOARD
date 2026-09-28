@@ -927,9 +927,21 @@ document.addEventListener("DOMContentLoaded", () => {
           name: error?.name || "Error",
           message: error?.message || String(error),
         }));
-        imageElement.alt = "미디어를 직접 불러올 수 없습니다.";
-        imageElement.removeAttribute("src");
-        showPreviewError(previewWrapper, src);
+        // Large cross-origin media can exceed the extension message/data URL
+        // budget. Let the browser render the resource directly as a final
+        // fallback; an <img> load does not require exposing the response body
+        // to the DevTools page.
+        imageElement.alt = "미디어 직접 로드 중";
+        imageElement.onload = () => {
+          if (previewWrapper) previewWrapper.classList.add('loaded');
+          if (previewApi) previewApi.fitPreview(false);
+          console.debug("[ARVION][preview:image:direct-load]", { previewId, side });
+        };
+        imageElement.onerror = () => {
+          imageElement.alt = "미디어를 직접 불러올 수 없습니다.";
+          showPreviewError(previewWrapper, src);
+        };
+        imageElement.src = src;
       }
     }
 
