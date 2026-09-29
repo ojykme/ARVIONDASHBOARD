@@ -564,7 +564,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="viewer-toolbar">
         <select aria-label="비교 방식" id="compareMode">
           <option value="split">좌우 비교</option><option value="original">원본 집중 보기</option>
-          <option value="optimized">최적화 집중 보기</option><option value="slider" disabled>슬라이더 (이미지 로드 후 사용)</option>
+          <option value="optimized">최적화 집중 보기</option><option value="slider">슬라이더 비교</option>
         </select>
         <button type="button" data-view="fit">화면 맞춤</button>
         <button type="button" data-view="minus" aria-label="축소">−</button>
@@ -1029,10 +1029,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const originalHeight = originalMedia?.naturalHeight || originalMedia?.videoHeight || 0;
     const compressedWidth = compressedMedia?.naturalWidth || compressedMedia?.videoWidth || 0;
     const compressedHeight = compressedMedia?.naturalHeight || compressedMedia?.videoHeight || 0;
-    const compatible = originalWidth > 0 && originalWidth === compressedWidth && originalHeight === compressedHeight;
-    sliderOption.disabled = !compatible;
-    sliderOption.textContent = compatible ? "슬라이더 비교" : "슬라이더 (동일 해상도 필요)";
-    if (!modeSelected) mode.value = preferredComparisonMode === "slider" && !compatible ? "split" : preferredComparisonMode;
+    const previewsLoaded = originalWidth > 0 && compressedWidth > 0;
+    const sameDimensions = previewsLoaded && originalWidth === compressedWidth && originalHeight === compressedHeight;
+    // The wipe remains useful for visual comparison even when a conversion
+    // changes dimensions. Do not block the select control in that case.
+    sliderOption.disabled = !previewsLoaded;
+    sliderOption.textContent = previewsLoaded
+      ? (sameDimensions ? "슬라이더 비교" : "슬라이더 비교 (해상도 다름)")
+      : "슬라이더 (이미지 로드 후 사용)";
+    if (!modeSelected) mode.value = preferredComparisonMode === "slider" && !previewsLoaded ? "split" : preferredComparisonMode;
     applyComparisonMode();
   }
 

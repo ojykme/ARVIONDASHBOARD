@@ -35,12 +35,54 @@ ARVION: 익스텐션 팝업 열고 도메인 입력 → 켜기(ON) 클릭 → �
 
 ## 🛠 사용 방법
 
+### 배포 ZIP 만들기
+
+고객사 전달용 ZIP은 프로젝트 전체를 직접 압축하지 말고, 아래 스크립트로 만듭니다. 실행에 필요한
+확장 프로그램 파일만 담고 테스트, 문서, Git 파일, `.DS_Store`는 제외합니다.
+
+```bash
+bash scripts/package-extension.sh
+```
+
+생성 결과는 `dist/ARVION-BMT-Dashboard-<version>.zip`입니다. ZIP을 풀면 생기는
+`ARVION-BMT-Dashboard-<version>` 폴더가 Chrome에서 선택할 폴더입니다.
+
+Windows PowerShell에서는 다음을 사용합니다.
+
+```powershell
+.\scripts\package-extension.ps1
+```
+
+### ZIP 설치 방법
+
+1. 전달받은 ZIP의 압축을 풉니다. ZIP 파일 자체는 Chrome에 직접 추가할 수 없습니다.
+2. Chrome 주소창에 `chrome://extensions`를 입력합니다.
+3. 오른쪽 위의 **개발자 모드**를 켭니다.
+4. **압축해제된 확장 프로그램을 로드합니다**를 누릅니다.
+5. 압축을 푼 `ARVION-BMT-Dashboard-<version>` 폴더를 선택합니다. `manifest.json`이 바로 보이는 폴더여야 합니다.
+6. 퍼즐 메뉴에서 ARVION BMT Dashboard를 고정하고, 아이콘을 눌러 매핑을 추가합니다.
+
+업데이트 때는 새 ZIP을 풀고 `chrome://extensions`에서 기존 확장 프로그램의 **새로고침**을 누르거나,
+새로 푼 폴더를 다시 로드합니다. 매핑을 수정한 뒤에는 대상 쇼핑몰 페이지를 새로고침합니다.
+
 ### 데모 모드 (트래픽 리다이렉트)
 1. 크롬 툴바에서 ARVION 아이콘 클릭
 2. **원본 도메인** (고객사) 입력: `img.customer.com`
 3. **타겟 도메인** (ARVION CDN) 입력: `customer.cdn.arvioncore.com`
 4. `도메인 매핑 추가` 버튼 클릭
 5. **데모 모드 스위치 ON** → 고객사 사이트 새로고침
+
+원본 도메인에는 쇼핑몰 주소가 아니라 DevTools Network에서 확인한 **실제 이미지 호스트명**을 입력합니다.
+예를 들어 `spdy-flexg-main.flexgate.co.kr`을 `spdy-flexg-main2.flexgate.co.kr`로,
+`spdy-flexg-ha.flexgate.co.kr`을 `spdy-flexg-ha2.flexgate.co.kr`로 매핑할 수 있습니다.
+
+매핑을 적용한 뒤 이미지 동작을 확인할 수 있는 사이트 예시는 다음과 같습니다.
+
+- `https://www.subuhae.com/`
+- `https://www.jecheolbabsang.com/`
+- `https://www.miminemarket.com/`
+- `https://www.tong-susan.com/`
+- `https://www.goldhome.co.kr/`
 
 ### 대시보드 모니터링
 1. `F12` → `ARVION DASHBOARD` 탭으로 이동
