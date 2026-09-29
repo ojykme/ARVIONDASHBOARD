@@ -566,6 +566,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <option value="split">좌우 비교</option><option value="original">원본 집중 보기</option>
           <option value="optimized">최적화 집중 보기</option><option value="slider">슬라이더 비교</option>
         </select>
+        <button type="button" id="exitSliderComparison" hidden>좌우 비교로 돌아가기</button>
         <button type="button" data-view="fit">화면 맞춤</button>
         <button type="button" data-view="minus" aria-label="축소">−</button>
         <button type="button" data-view="1">100%</button><button type="button" data-view="2">200%</button>
@@ -968,22 +969,38 @@ document.addEventListener("DOMContentLoaded", () => {
     const mode = modalContent.querySelector("#compareMode");
     const sync = modalContent.querySelector("#syncPreview");
     const wipe = modalContent.querySelector(".wipe-control");
+    const exitSlider = modalContent.querySelector("#exitSliderComparison");
     let active = true;
     previewCleanup = () => { active = false; apis.forEach(api => api.destroy()); };
     function fitBoth() { apis.forEach(api => api.fitPreview(false)); }
     let modeSelected = false;
-    function applyComparisonMode() {
-      comparison.dataset.mode = mode.value;
-      wipe.hidden = mode.value !== "slider";
-      if (mode.value === "slider") sync.checked = true;
-      sync.disabled = mode.value === "slider";
+    function applyComparisonMode(nextMode = mode.value) {
+      const selectedMode = comparisonModes.has(nextMode) ? nextMode : "split";
+      mode.value = selectedMode;
+      comparison.dataset.mode = selectedMode;
+      const sliderActive = selectedMode === "slider";
+      wipe.hidden = !sliderActive;
+      exitSlider.hidden = !sliderActive;
+      if (sliderActive) {
+        sync.checked = true;
+        sync.disabled = true;
+      } else {
+        sync.disabled = false;
+        // A slider boundary must not remain when restoring a normal layout.
+        comparison.style.removeProperty("--wipe");
+      }
       requestAnimationFrame(fitBoth);
     }
-    mode.onchange = () => {
+    function selectComparisonMode(nextMode) {
       modeSelected = true;
-      saveComparisonMode(mode.value);
-      applyComparisonMode();
-    };
+      saveComparisonMode(nextMode);
+      applyComparisonMode(nextMode);
+    }
+    // Some embedded DevTools contexts dispatch input before change. Support
+    // both so a selection always leaves slider mode immediately.
+    mode.oninput = () => selectComparisonMode(mode.value);
+    mode.onchange = () => selectComparisonMode(mode.value);
+    exitSlider.onclick = () => selectComparisonMode("split");
     wipe.querySelector("input").oninput = event => comparison.style.setProperty("--wipe", `${event.target.value}%`);
     sync.onchange = () => { if (sync.checked) fitBoth(); };
     modalContent.querySelectorAll("[data-view]").forEach(button => {
