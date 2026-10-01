@@ -27,6 +27,24 @@ copy_required() {
   cp "${ROOT_DIR}/${relative_path}" "${STAGE_DIR}/${relative_path}"
 }
 
+obfuscate_javascript() {
+  local relative_path="$1"
+  local target_path="${STAGE_DIR}/${relative_path}"
+  npx --no-install javascript-obfuscator "${target_path}" \
+    --output "${target_path}" \
+    --compact true \
+    --identifier-names-generator hexadecimal \
+    --rename-globals false \
+    --self-defending false \
+    --string-array true \
+    --string-array-encoding base64 \
+    --string-array-threshold 0.75 \
+    --control-flow-flattening false \
+    --dead-code-injection false \
+    --disable-console-output false \
+    --source-map false >/dev/null
+}
+
 for file in \
   manifest.json \
   rules.json \
@@ -44,6 +62,18 @@ for file in \
   src/popup/style.css
 do
   copy_required "${file}"
+done
+
+# Obfuscate only the staged customer package. The source tree used by
+# "Load unpacked" and all development files remain readable and unchanged.
+for file in \
+  src/background/background.js \
+  src/dashboard/chart.js \
+  src/dashboard/view.js \
+  src/devtools/devtools.js \
+  src/popup/popup.js
+do
+  obfuscate_javascript "${file}"
 done
 
 rm -f "${ZIP_PATH}"

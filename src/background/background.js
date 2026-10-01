@@ -34,7 +34,19 @@ function arrayBufferToBase64(buffer) {
 // Reserve a distinct ID before either concurrent preview request awaits rule creation.
 let nextPreviewRuleId = 1000;
 
-async function fetchPreviewResource(url) {
+function getStoredMappings() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["domainMappings"], (result) => {
+      if (chrome.runtime.lastError) {
+        resolve([]);
+        return;
+      }
+      resolve(Array.isArray(result.domainMappings) ? result.domainMappings : []);
+    });
+  });
+}
+
+async function fetchPreviewResource(url, side = "original") {
   let parsedUrl;
   try {
     parsedUrl = new URL(url);
@@ -44,6 +56,17 @@ async function fetchPreviewResource(url) {
 
   if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
     throw new Error("Preview URL must use http or https");
+  }
+
+  // Original preview must bypass the redirect mapping. Optimized preview must
+  // explicitly target the active CDN mapping because extension-initiated
+  // requests are excluded from the page redirect rules.
+  if (side === "optimized") {
+    const mappings = await getStoredMappings();
+    const mapping = mappings.find((candidate) =>
+      candidate.enabled !== false && candidate.from === parsedUrl.hostname
+    );
+    if (mapping) parsedUrl.hostname = mapping.to;
   }
 
   const ruleId = nextPreviewRuleId++;
@@ -104,7 +127,7 @@ function updatePreviewRule(options) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
       case "fetchPreview":
-          fetchPreviewResource(message.url)
+          fetchPreviewResource(message.url, message.side)
               .then(sendResponse)
               .catch(error => sendResponse({
                   ok: false,

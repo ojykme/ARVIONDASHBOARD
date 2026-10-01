@@ -50,3 +50,6 @@
 - 영상 재생은 브라우저의 코덱 지원과 원본 서버 접근 조건에 영향을 받는다.
 - 배포 버전 및 설치 ZIP은 변경하지 않았다. 적용 시 확장앱을 다시 로드하고 DevTools와 대상 페이지를 다시 연다.
 - 문제 발생 시 이 변경 커밋을 되돌리고 확장앱을 다시 로드한다.
+## 1.2.0 — 2026-10-01
+
+- Add dashboard display modes, richer page-level summaries, and visual optimization badges.

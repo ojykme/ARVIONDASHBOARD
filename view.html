@@ -50,6 +50,13 @@
         </button>
 
         <span class="action-label">필터링</span>
+        <label class="action-label" for="dashboardMode">모드</label>
+        <select id="dashboardMode" class="dashboard-mode" aria-label="대시보드 모드">
+          <option value="monitor">모니터링</option>
+          <option value="optimization">최적화 효과</option>
+          <option value="headers">헤더 상세</option>
+          <option value="presentation">발표용 요약</option>
+        </select>
         <div id="filterContainer" class="filter-container">
           <button class="filter-btn active" data-filter="all">전체</button>
           <button class="filter-btn" data-filter="hit">HIT</button>

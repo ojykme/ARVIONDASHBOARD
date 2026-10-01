@@ -44,6 +44,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const loadingOverlay = document.getElementById("loadingOverlay");
   const toast = document.getElementById("toast");
   const chartCanvas = document.getElementById("imageChart");
+  const dashboardMode = document.getElementById("dashboardMode");
+  if (dashboardMode) {
+    const savedMode = localStorage.getItem("arvionDashboardMode");
+    if (savedMode && dashboardMode.querySelector(`option[value="${savedMode}"]`)) dashboardMode.value = savedMode;
+    const applyDashboardMode = () => {
+      document.documentElement.dataset.dashboardMode = dashboardMode.value;
+      localStorage.setItem("arvionDashboardMode", dashboardMode.value);
+    };
+    dashboardMode.addEventListener("change", applyDashboardMode);
+    applyDashboardMode();
+  }
 
   let currentFilter = "all";
   let sortColumn = "url";
@@ -56,6 +67,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let comparisonPreferenceEdited = false;
   let preferredLoopPlayback = false;
   let loopPreferenceEdited = false;
+  let detailInfoVisible = false;
+  let imageInfoVisible = true;
   const comparisonPreferenceReady = new Promise(resolve => {
     const restore = value => {
       if (!comparisonPreferenceEdited && comparisonModes.has(value)) preferredComparisonMode = value;
@@ -221,6 +234,45 @@ document.addEventListener("DOMContentLoaded", () => {
     return null;
   }
 
+  function previewInfoMarkup(item, side) {
+    if (side === "combined") {
+      const savings = computeSavingsPercent(item.originalSize, item.compressedSize, item.compressionRatio);
+      return `<div class="preview-info-overlay preview-info-overlay-combined">
+        <div class="preview-info-kicker"><span class="preview-info-dot"></span>IMAGE DELIVERY DETAILS</div>
+        <div class="preview-info-title"><span>원본 → 최적화</span><span class="preview-info-format">${escapeHtml(normalizeFormat(item.originalFormat))} → ${escapeHtml(normalizeFormat(item.convertedFormat || item.outputFormat || item.imageFormat || item.targetFormat))}</span></div>
+        <div class="preview-info-grid preview-info-grid-combined">
+          <span>크기</span><strong>${formatBytes(Number(item.originalSize) || 0)} → ${formatBytes(Number(item.compressedSize) || 0)}</strong>
+          <span>절감률</span><strong class="preview-info-saving">${savings === null ? "N/A" : `${savings.toFixed(1)}%`}</strong>
+          <span>Content-Type</span><strong>${escapeHtml(item.contentType || "N/A")}</strong>
+          <span>상태 / 소스</span><strong>${escapeHtml(deliveryOf(item))} · ${escapeHtml(sourceOf(item))}</strong>
+          <span>처리 시간</span><strong>${escapeHtml(formatTime(item.processingTime))}</strong>
+          <span>캐시</span><strong>${escapeHtml(item.cdnCacheStatus || item.cacheControl || "N/A")}</strong>
+        </div>
+      </div>`;
+    }
+    const optimized = side === "optimized";
+    const size = optimized ? item.compressedSize : item.originalSize;
+    const format = optimized
+      ? (item.convertedFormat || item.outputFormat || item.imageFormat || item.targetFormat || item.contentType)
+      : (item.originalFormat || item.contentType);
+    const status = deliveryOf(item);
+    const source = sourceOf(item);
+    const savings = computeSavingsPercent(item.originalSize, item.compressedSize, item.compressionRatio);
+    return `<div class="preview-info-overlay" data-side="${side}">
+      <div class="preview-info-kicker"><span class="preview-info-dot"></span>${optimized ? "OPTIMIZED DELIVERY" : "ORIGIN REFERENCE"}</div>
+      <div class="preview-info-title"><span>${optimized ? "최적화" : "원본"}</span><span class="preview-info-format">${escapeHtml(normalizeFormat(format))}</span></div>
+      <div class="preview-info-grid">
+        <span>파일 크기</span><strong data-info="size">${formatBytes(Number(size) || 0)}</strong>
+        <span>해상도</span><strong data-info="dimensions">측정 중…</strong>
+        <span>Content-Type</span><strong>${escapeHtml(item.contentType || "N/A")}</strong>
+        <span>전달 상태</span><strong>${escapeHtml(status)} · ${escapeHtml(source)}</strong>
+        ${optimized ? `<span>절감률</span><strong class="preview-info-saving">${savings === null ? "N/A" : `${savings.toFixed(1)}%`}</strong>` : ""}
+        <span>처리 시간</span><strong>${escapeHtml(formatTime(item.processingTime))}</strong>
+      </div>
+      <div class="preview-info-foot">${escapeHtml(item.cdnCacheStatus || item.cacheControl || "Cache header unavailable")}</div>
+    </div>`;
+  }
+
   function extractFilename(url) {
     try {
       return new URL(url).pathname.split("/").filter(Boolean).pop() || url;
@@ -353,9 +405,17 @@ document.addEventListener("DOMContentLoaded", () => {
       </div>
       <div class="stat-card"><span class="stat-label">평균 용량 절감율</span><span class="stat-value" data-stat="percent"></span></div>
       <div class="stat-card"><span class="stat-label">실제 전송량</span><span class="stat-value" data-stat="actual"></span></div>
-      <div class="stat-card"><span class="stat-label">Core 버전</span><span class="stat-value" data-core-version>확인 중…</span></div>`;
+      <div class="stat-card"><span class="stat-label">Core 버전</span><span class="stat-value" data-core-version>확인 중…</span></div>
+      <div class="stat-card"><span class="stat-label">평균 처리 시간</span><span class="stat-value" data-average-processing>확인 중…</span></div>
+      <div class="stat-card"><span class="stat-label">포맷 분포</span><span class="stat-value stat-value-small" data-format-summary>확인 중…</span></div>`;
     const versions = [...new Set(items.map(item => item.streamVersion || item.arvionVersion).filter(value => value && value !== 'N/A'))];
     statsContainer.querySelector('[data-core-version]').textContent = versions.length === 1 ? versions[0] : versions.length > 1 ? versions.join(' · ') : '확인 불가';
+    const processingValues = items.map(item => Number(String(item.processingTime).replace(/[^0-9.]/g, ""))).filter(Number.isFinite);
+    const averageProcessing = processingValues.length ? processingValues.reduce((sum, value) => sum + value, 0) / processingValues.length : null;
+    statsContainer.querySelector('[data-average-processing]').textContent = averageProcessing === null ? "N/A" : formatTime(averageProcessing);
+    const formatCounts = {};
+    items.forEach(item => { const format = normalizeFormat(item.convertedFormat || item.outputFormat || item.contentType); formatCounts[format] = (formatCounts[format] || 0) + 1; });
+    statsContainer.querySelector('[data-format-summary]').textContent = Object.entries(formatCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([format, count]) => `${format} ${count}`).join(" · ") || "N/A";
     statsContainer.querySelector('[data-hit]').textContent = `(${hitRate})`;
     const meter = statsContainer.querySelector('.savings-meter');
     meter.setAttribute('aria-valuenow', savings.toFixed(1));
@@ -575,7 +635,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ${isVideo ? '<button type="button" id="syncMediaPlayback">두 영상 동시 재생</button>' : ''}
         ${isAnimatedImage ? '<button type="button" id="syncAnimationPlayback">애니메이션 처음부터 동시 재생</button>' : ''}
         ${(isVideo || isAnimatedImage) ? '<label><input id="loopPlayback" type="checkbox"> 반복 재생</label>' : ''}
-        <button type="button" id="toggleInfo" aria-expanded="false">정보 보기</button>
+        <button type="button" id="toggleInfo" aria-expanded="false">상세 정보 보기</button>
         <button type="button" id="fullscreenPreview">전체화면</button>
       </div>
       <label class="wipe-control" hidden>원본 / 최적화 경계 <input type="range" min="0" max="100" value="50" aria-label="이미지 비교 경계"></label>
@@ -646,6 +706,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="image-loader"><div class="spinner"></div></div>
           </div>
         </div>
+        ${previewInfoMarkup(item, "combined")}
       </div>
     `;
   }
@@ -729,13 +790,24 @@ document.addEventListener("DOMContentLoaded", () => {
       convertedFormat: item.convertedFormat || item.outputFormat || "N/A",
     });
     previewCleanup();
-    modalContent.className = "info-collapsed";
+    modalContent.className = detailInfoVisible ? "" : "info-collapsed";
     modalContent.innerHTML = buildModalContent(item);
-    modalContent.querySelector("#toggleInfo").onclick = event => {
-      const collapsed = modalContent.classList.toggle("info-collapsed");
-      event.currentTarget.textContent = collapsed ? "정보 보기" : "정보 접기";
-      event.currentTarget.setAttribute("aria-expanded", String(!collapsed));
+    const toggleInfo = () => {
+      const hidden = modalContent.classList.toggle("info-collapsed");
+      modalContent.classList.toggle("info-soft", !hidden);
+      detailInfoVisible = !hidden;
+      const button = modalContent.querySelector("#toggleInfo");
+      if (button) {
+        button.textContent = hidden ? "정보 보기" : "정보 닫기";
+        button.setAttribute("aria-expanded", String(!hidden));
+      }
     };
+    const infoButton = modalContent.querySelector("#toggleInfo");
+    if (infoButton && detailInfoVisible) {
+      infoButton.textContent = "상세 정보 닫기";
+      infoButton.setAttribute("aria-expanded", "true");
+    }
+    modalContent.querySelector("#toggleInfo").onclick = toggleInfo;
     modalContent.querySelector("#fullscreenPreview").onclick = async () => {
       try {
         if (document.fullscreenElement === modal) await document.exitFullscreen();
@@ -780,6 +852,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const originalWrapper = modalContent.querySelectorAll('.image-preview')[0];
     const compressedWrapper = modalContent.querySelectorAll('.image-preview')[1];
+    function updatePreviewDimensions(wrapper, media) {
+      const dimensions = wrapper?.querySelector('[data-info="dimensions"]');
+      const width = media?.naturalWidth || media?.videoWidth;
+      const height = media?.naturalHeight || media?.videoHeight;
+      if (dimensions) dimensions.textContent = width && height ? `${width} × ${height}px` : "N/A";
+    }
+
+    modalContent.querySelectorAll('.image-preview').forEach(wrapper => {
+      wrapper.addEventListener('dblclick', event => {
+        if (event.target.closest('button, a, input, video')) return;
+        closePreview();
+      });
+    });
+    const imageInfo = modalContent.querySelector('.preview-info-overlay-combined');
+    if (imageInfo) {
+      imageInfo.classList.toggle('is-hidden', !imageInfoVisible);
+      imageInfo.addEventListener('click', event => {
+        event.stopPropagation();
+        imageInfoVisible = !imageInfoVisible;
+        imageInfo.classList.toggle('is-hidden', !imageInfoVisible);
+      });
+    }
     
     const isVideo = isVideoMedia(item);
 
@@ -840,6 +934,22 @@ document.addEventListener("DOMContentLoaded", () => {
     async function loadImage(imageElement, src, previewApi) {
       const previewWrapper = imageElement.closest('.image-preview');
       const side = previewWrapper === originalWrapper ? "original" : "optimized";
+      let previewSrc = src;
+      if (side === "optimized" && typeof chrome !== "undefined" && chrome.storage?.local) {
+        previewSrc = await new Promise(resolve => {
+          chrome.storage.local.get(["domainMappings"], result => {
+            const mappings = Array.isArray(result?.domainMappings) ? result.domainMappings : [];
+            try {
+              const parsed = new URL(src);
+              const mapping = mappings.find(candidate => candidate.enabled !== false && candidate.from === parsed.hostname);
+              if (mapping) parsed.hostname = mapping.to;
+              resolve(parsed.href);
+            } catch {
+              resolve(src);
+            }
+          });
+        });
+      }
       console.debug("[ARVION][preview:fetch:start]", {
         previewId,
         side,
@@ -853,8 +963,35 @@ document.addEventListener("DOMContentLoaded", () => {
         if (errorLink) errorLink.href = '';
       }
 
-      // DevTools 페이지의 fetch는 오리진의 CORS 정책에 막힐 수 있다.
-      // host permission을 가진 확장 서비스 워커에서 가져와 data URL로 전달받는다.
+      // Prefer the real URL so normal previews remain inspectable in DevTools
+      // and do not pay the Base64 memory/size overhead. Fall back to the
+      // extension worker only when the browser cannot render the URL directly.
+      const directLoad = () => new Promise(resolve => {
+        let settled = false;
+        const finish = ok => {
+          if (settled) return;
+          settled = true;
+          imageElement.onload = null;
+          imageElement.onerror = null;
+          resolve(ok);
+        };
+        imageElement.onload = () => { updatePreviewDimensions(previewWrapper, imageElement); finish(true); };
+        imageElement.onerror = () => finish(false);
+        imageElement.src = previewSrc;
+        if (imageElement.complete && imageElement.naturalWidth > 0) finish(true);
+      });
+
+      if (await directLoad()) {
+        if (previewWrapper) previewWrapper.classList.add('loaded');
+        if (previewApi) previewApi.fitPreview(false);
+        console.debug("[ARVION][preview:image:direct-load]", { previewId, side, url: getLogUrl(src) });
+        return;
+      }
+
+      console.debug("[ARVION][preview:direct-fallback]", { previewId, side, url: getLogUrl(src) });
+
+      // DevTools page fetches can be blocked by the source site's CORS policy.
+      // The host-permissioned extension worker then returns a data URL.
       try {
         const response = await new Promise((resolve, reject) => {
           if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
@@ -862,7 +999,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
           }
 
-          chrome.runtime.sendMessage({ type: "fetchPreview", url: src }, (result) => {
+          chrome.runtime.sendMessage({ type: "fetchPreview", url: previewSrc, side }, (result) => {
             if (chrome.runtime.lastError) {
               reject(new Error(chrome.runtime.lastError.message));
               return;
@@ -899,6 +1036,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (resolved) return;
             resolved = true;
             if (previewWrapper) previewWrapper.classList.add('loaded');
+            updatePreviewDimensions(previewWrapper, imageElement);
             if (previewApi) previewApi.fitPreview(false);
             console.debug("[ARVION][preview:image:load]", { previewId, side });
             resolve();
@@ -928,21 +1066,8 @@ document.addEventListener("DOMContentLoaded", () => {
           name: error?.name || "Error",
           message: error?.message || String(error),
         }));
-        // Large cross-origin media can exceed the extension message/data URL
-        // budget. Let the browser render the resource directly as a final
-        // fallback; an <img> load does not require exposing the response body
-        // to the DevTools page.
-        imageElement.alt = "미디어 직접 로드 중";
-        imageElement.onload = () => {
-          if (previewWrapper) previewWrapper.classList.add('loaded');
-          if (previewApi) previewApi.fitPreview(false);
-          console.debug("[ARVION][preview:image:direct-load]", { previewId, side });
-        };
-        imageElement.onerror = () => {
-          imageElement.alt = "미디어를 직접 불러올 수 없습니다.";
-          showPreviewError(previewWrapper, src);
-        };
-        imageElement.src = src;
+        imageElement.alt = "미디어를 불러올 수 없습니다.";
+        showPreviewError(previewWrapper, src);
       }
     }
 
@@ -1190,6 +1315,7 @@ document.addEventListener("DOMContentLoaded", () => {
           updateDashboard(message.data, null, false);
         }
         if (message.type === "resetTable") {
+          closePreview();
           pendingData = null;
           lastReceived = 0;
           updateReception();
